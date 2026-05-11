@@ -8,7 +8,7 @@ import {
   X,
   History,
   Download,
-  Eye,
+  PanelsTopLeft,
   Save,
   Upload,
   Loader2,
@@ -228,7 +228,7 @@ export const Toolbar: React.FC = () => {
                     type="button"
                     className="p-2 rounded-lg transition-colors text-text-secondary hover:bg-background-elevated hover:text-text-primary"
                   >
-                    <Eye size={16} />
+                    <PanelsTopLeft size={16} />
                   </button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
