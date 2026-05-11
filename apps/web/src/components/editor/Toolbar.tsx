@@ -8,7 +8,6 @@ import {
   X,
   History,
   Download,
-  Eye,
   PanelsTopLeft,
   Save,
   Upload,
@@ -24,12 +23,6 @@ import { AgeruWordmark } from "../AgeruWordmark";
 import { HistoryPanel } from "./inspector/HistoryPanel";
 import { toast } from "../../stores/notification-store";
 import { saveSignageLayout, publishSignageLayout } from "../../services/signage-layouts-api";
-import { writePreviewSnapshot } from "../../services/preview-snapshot";
-import {
-  openPreviewChannel,
-  type PreviewSnapshotMessage,
-  type PreviewSyncMessage,
-} from "../../services/preview-sync";
 import { getEffectiveProjectDuration } from "@openreel/core";
 import {
   Dialog,
@@ -94,6 +87,57 @@ export const Toolbar: React.FC = () => {
     );
     const effectiveDuration = Math.max(autoDuration, widgetMaxEnd, 0);
 
+    // Synthesize timeline tracks from each widget so downstream replayers that
+    // iterate `tracks[]` see widgets the same way they see media clips.
+    // The widget array is still emitted as the canonical source — this is a
+    // derived view. Clips carry a sentinel `mediaId` prefix (`widget:<id>`)
+    // and an embedded `widget: { type, config, layout, ... }` payload so the
+    // replayer has everything it needs to render.
+    const widgetTracks = signageWidgets.map((w) => {
+      const trackId = `widget-track-${w.id}`;
+      const layout = w.layout ?? { x: 0, y: 0, width: 360, height: 220 };
+      return {
+        id: trackId,
+        type: "graphics" as const,
+        name: `${w.type[0].toUpperCase()}${w.type.slice(1)} Widget`,
+        clips: [
+          {
+            id: `widget-clip-${w.id}`,
+            mediaId: `widget:${w.id}`,
+            trackId,
+            startTime: w.startTime,
+            duration: w.duration,
+            inPoint: 0,
+            outPoint: w.duration,
+            effects: [],
+            audioEffects: [],
+            transform: {
+              position: { x: layout.x, y: layout.y },
+              scale: { x: 1, y: 1 },
+              rotation: 0,
+              anchor: { x: 0.5, y: 0.5 },
+              opacity: 1,
+            },
+            volume: 1,
+            keyframes: [],
+            // Non-standard payload — replayer reads this to render the widget.
+            widget: {
+              type: w.type,
+              config: w.config,
+              layout: w.layout,
+              locked: w.locked ?? false,
+              hidden: w.hidden ?? false,
+            },
+          },
+        ],
+        transitions: [],
+        locked: w.locked ?? false,
+        hidden: w.hidden ?? false,
+        muted: false,
+        solo: false,
+      };
+    });
+
     const normalizedProject = {
       ...project,
       settings: {
@@ -108,6 +152,12 @@ export const Toolbar: React.FC = () => {
       },
       timeline: {
         ...project.timeline,
+        // Append synthesized widget tracks after the user's real media tracks
+        // so existing track indices stay stable.
+        tracks: [
+          ...project.timeline.tracks,
+          ...(widgetTracks as unknown as typeof project.timeline.tracks),
+        ],
         duration: Math.max(project.timeline.duration, widgetMaxEnd),
       },
     };
@@ -152,64 +202,6 @@ export const Toolbar: React.FC = () => {
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
     toast.success("Editor state downloaded", filename);
-  }, [buildPreviewCorePayload]);
-
-  const handleOpenPreview = useCallback(() => {
-    writePreviewSnapshot(buildPreviewCorePayload());
-    // The router parses params from the hash (#/route?key=val), not the URL query.
-    const url = new URL(window.location.href);
-    url.hash = "#/editor?fullscreen=1";
-    window.open(url.toString(), "_blank", "noopener,noreferrer");
-  }, [buildPreviewCorePayload]);
-
-  // Live broadcast: any time the editor's project or widgets change, push the
-  // normalized snapshot to all open Preview tabs over a BroadcastChannel. Also
-  // respond to "request-snapshot" pings (preview tab reload).
-  React.useEffect(() => {
-    const channel = openPreviewChannel();
-    if (!channel) return;
-
-    let debounce: number | null = null;
-    const broadcast = () => {
-      if (debounce != null) window.clearTimeout(debounce);
-      debounce = window.setTimeout(() => {
-        const payload = buildPreviewCorePayload();
-        const msg: PreviewSnapshotMessage = {
-          type: "snapshot",
-          project: payload.project,
-          signageWidgets: payload.signageWidgets,
-          effectiveDuration: payload.effectiveDuration,
-          ts: Date.now(),
-        };
-        try { channel.postMessage(msg); } catch { /* ignore */ }
-      }, 200);
-    };
-
-    // Broadcast whenever the project store or widget store changes.
-    // `useProjectStore` has subscribeWithSelector middleware so we can target
-    // the `.project` slice; the widget store is plain Zustand and we just
-    // broadcast on any state change (only `widgets` lives there anyway).
-    const unsubProject = useProjectStore.subscribe(
-      (state) => state.project,
-      () => broadcast(),
-    );
-    const unsubWidgets = useSignageWidgetStore.subscribe(() => broadcast());
-
-    const onMessage = (event: MessageEvent<PreviewSyncMessage>) => {
-      if (event.data?.type === "request-snapshot") broadcast();
-    };
-    channel.addEventListener("message", onMessage);
-
-    // Initial push so a preview tab opened before this effect mounted sees data.
-    broadcast();
-
-    return () => {
-      if (debounce != null) window.clearTimeout(debounce);
-      channel.removeEventListener("message", onMessage);
-      unsubProject();
-      unsubWidgets();
-      channel.close();
-    };
   }, [buildPreviewCorePayload]);
 
   const returnUrl = params.returnUrl?.trim() || "";
@@ -416,20 +408,6 @@ export const Toolbar: React.FC = () => {
       ) : null}
 
       <div className="flex items-center gap-4">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={handleOpenPreview}
-              className="p-2 rounded-lg hover:bg-background-elevated text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <Eye size={16} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Open full-screen preview in a new tab</p>
-          </TooltipContent>
-        </Tooltip>
-
         <Tooltip>
           <TooltipTrigger asChild>
             <button

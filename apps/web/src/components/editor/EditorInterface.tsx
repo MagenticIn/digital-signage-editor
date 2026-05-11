@@ -19,13 +19,7 @@ import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
 import {
   initializePlaybackBridge,
   disposePlaybackBridge,
-  getPlaybackBridge,
 } from "../../bridges/playback-bridge";
-import { useTimelineStore } from "../../stores/timeline-store";
-import {
-  openPreviewChannel,
-  type PreviewSyncMessage,
-} from "../../services/preview-sync";
 import {
   initializeMediaBridge,
   disposeMediaBridge,
@@ -176,62 +170,7 @@ export const EditorInterface: React.FC = () => {
 
   const { params } = useRouter();
   const isPreview = params.preview === "1";
-  const isFullscreen = params.fullscreen === "1";
   const layoutName = params.signageLayoutName ?? "Layout Preview";
-
-  // Autoplay + loop when entering full-screen preview.
-  // Also seek-to-0 + restart on every broadcast snapshot from the editor tab,
-  // so live edits play immediately from the top.
-  useEffect(() => {
-    if (!isFullscreen) return;
-
-    const bridge = getPlaybackBridge();
-    let hasStartedOnce = false;
-    let loopTimer: number | null = null;
-
-    const startPlayback = () => {
-      bridge.seek(0).then(() => bridge.play());
-      hasStartedOnce = true;
-    };
-
-    // Defer slightly so the masterClock duration is in place (it's set by
-    // playback-controller on the first ProjectChanged event).
-    const initialTimer = window.setTimeout(startPlayback, 200);
-
-    // Subscribe to playbackState. Once we've started, transitioning to
-    // "stopped" means the master clock hit the layout end — loop back.
-    const unsub = useTimelineStore.subscribe(
-      (s) => s.playbackState,
-      (state) => {
-        if (!hasStartedOnce) return;
-        if (state === "stopped") {
-          if (loopTimer != null) window.clearTimeout(loopTimer);
-          loopTimer = window.setTimeout(startPlayback, 150);
-        }
-      },
-    );
-
-    // Live updates from the editor: every snapshot restarts playback at 0 so
-    // the preview always shows the latest edit from the top.
-    const channel = openPreviewChannel();
-    const onMessage = (event: MessageEvent<PreviewSyncMessage>) => {
-      if (event.data?.type !== "snapshot") return;
-      // Stores are re-hydrated by App.tsx's effect; here we just resync playback.
-      window.setTimeout(startPlayback, 100);
-    };
-    channel?.addEventListener("message", onMessage);
-
-    return () => {
-      window.clearTimeout(initialTimer);
-      if (loopTimer != null) window.clearTimeout(loopTimer);
-      unsub();
-      if (channel) {
-        channel.removeEventListener("message", onMessage);
-        channel.close();
-      }
-      bridge.pause();
-    };
-  }, [isFullscreen]);
 
   const {
     keyframeEditorOpen,
@@ -366,17 +305,6 @@ export const EditorInterface: React.FC = () => {
             <p className="text-red-500 text-xs mt-2">{initError}</p>
           )}
         </div>
-      </div>
-    );
-  }
-
-  // Full-screen playback: no chrome, just the Preview canvas filling the viewport.
-  if (isFullscreen) {
-    return (
-      <div className="w-screen h-screen bg-black overflow-hidden">
-        <PanelErrorBoundary name="Preview">
-          <Preview />
-        </PanelErrorBoundary>
       </div>
     );
   }

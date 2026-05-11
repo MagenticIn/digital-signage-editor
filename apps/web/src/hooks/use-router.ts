@@ -22,8 +22,6 @@ export interface RouteParams {
   signageLayoutName?: string;
   /** "1" = read-only preview mode, hides all editing UI */
   preview?: string;
-  /** "1" = full-screen playback (no toolbar, no panels, no timeline). */
-  fullscreen?: string;
 }
 
 export interface RouterState {

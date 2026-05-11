@@ -26,13 +26,6 @@ function isEditorProjectShape(data: unknown): data is Project {
 }
 import { setSignageAuth, getSignageLayout, isSignageLayoutsConnected } from "./services/signage-layouts-api";
 import { useSignageMediaStore } from "./stores/signage-media-store";
-import { readPreviewSnapshot } from "./services/preview-snapshot";
-import { useSignageWidgetStore } from "./stores/signage-widget-store";
-import {
-  openPreviewChannel,
-  type PreviewSnapshotMessage,
-  type PreviewSyncMessage,
-} from "./services/preview-sync";
 
 const EditorInterface = lazy(() =>
   import("./components/editor/EditorInterface").then((m) => ({
@@ -62,86 +55,13 @@ function App() {
   const loadProject = useProjectStore((state) => state.loadProject);
 
   const { route, params, navigate, parsedDimensions, fps } = useRouter();
-  // Detect fullscreen preview as early as possible — disables the recovery
-  // dialog and gates the boot-time hydration effect.
-  const isFullscreenPreview = params.fullscreen === "1";
-  const { showDialog, availableSaves, recover, dismiss, clearAll } = useProjectRecovery({
-    enabled: !isFullscreenPreview,
-  });
+  const { showDialog, availableSaves, recover, dismiss, clearAll } = useProjectRecovery();
   const hasHandledInitialRoute = useRef(false);
   const signageLayoutLoadedRef = useRef(false);
 
   // Track whether we are still fetching the signage layout before showing the editor.
   const [signageLoading, setSignageLoading] = useState(false);
   const [signageLoadError, setSignageLoadError] = useState<string | null>(null);
-
-  // Fullscreen preview state — populated by reading the sessionStorage snapshot
-  // when the URL contains `?fullscreen=1`.
-  const [fullscreenHydrated, setFullscreenHydrated] = useState(false);
-  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
-  const fullscreenHydrationRef = useRef(false);
-
-  useEffect(() => {
-    if (!isFullscreenPreview) return;
-
-    const hydrate = (
-      project: PreviewSnapshotMessage["project"],
-      signageWidgets: PreviewSnapshotMessage["signageWidgets"],
-    ) => {
-      try {
-        loadProject(project);
-        useSignageWidgetStore.setState({ widgets: signageWidgets });
-        const { setPanelVisible } = useUIStore.getState();
-        setPanelVisible("mediaLibrary", false);
-        setPanelVisible("inspector", false);
-        setPanelVisible("timeline", false);
-        setFullscreenError(null);
-        setFullscreenHydrated(true);
-      } catch (err) {
-        setFullscreenError(err instanceof Error ? err.message : "Failed to load preview snapshot.");
-      }
-    };
-
-    // First frame: hydrate from sessionStorage if present.
-    if (!fullscreenHydrationRef.current) {
-      fullscreenHydrationRef.current = true;
-      const snapshot = readPreviewSnapshot();
-      if (snapshot) {
-        hydrate(snapshot.project, snapshot.signageWidgets);
-      } else {
-        // No seed — wait for the editor's BroadcastChannel response.
-      }
-    }
-
-    // Real-time sync via BroadcastChannel. The editor tab subscribes to its
-    // stores and broadcasts; we hydrate on every "snapshot" message.
-    const channel = openPreviewChannel();
-    if (!channel) {
-      // BroadcastChannel unsupported — fall back to a sessionStorage-only one-shot.
-      if (!fullscreenHydrationRef.current) {
-        setFullscreenError("No preview data found. Open this from the editor's Preview button.");
-      }
-      return;
-    }
-
-    const onMessage = (event: MessageEvent<PreviewSyncMessage>) => {
-      const msg = event.data;
-      if (msg?.type !== "snapshot") return;
-      hydrate(msg.project, msg.signageWidgets);
-    };
-    channel.addEventListener("message", onMessage);
-
-    // Ask the editor tab to push its current state (covers preview-tab reload
-    // and the sessionStorage-missing case).
-    try { channel.postMessage({ type: "request-snapshot" } satisfies PreviewSyncMessage); }
-    catch { /* ignore */ }
-
-    return () => {
-      channel.removeEventListener("message", onMessage);
-      channel.close();
-    };
-  }, [isFullscreenPreview, loadProject]);
-
 
   // ---------------------------------------------------------------------------
   // Signal opener that the editor is ready to receive SIGNAGE_INIT.
@@ -329,9 +249,7 @@ function App() {
   }, [handleKeyDown]);
 
   const showWelcome =
-    !isFullscreenPreview &&
-    ["welcome", "templates", "recent"].includes(route) &&
-    !skipWelcomeScreen;
+    ["welcome", "templates", "recent"].includes(route) && !skipWelcomeScreen;
   const initialTab =
     route === "templates"
       ? "templates"
@@ -348,13 +266,6 @@ function App() {
         <MobileBlocker />
         {isSharePage ? (
           <SharePage shareId={params.shareId!} />
-        ) : isFullscreenPreview && fullscreenError ? (
-          <div className="h-screen w-screen bg-black text-white flex flex-col items-center justify-center gap-2 text-sm">
-            <span>{fullscreenError}</span>
-            <span className="text-xs text-white/50">Close this tab and try again from the editor.</span>
-          </div>
-        ) : isFullscreenPreview && !fullscreenHydrated ? (
-          <LoadingSpinner message="Loading preview…" />
         ) : showWelcome ? (
           <WelcomeScreen initialTab={initialTab} />
         ) : signageLoading ? (
@@ -380,7 +291,7 @@ function App() {
           onClose={closeModal}
         />
         <SearchModal isOpen={activeModal === "search"} onClose={closeModal} />
-        {!isFullscreenPreview && showDialog && availableSaves.length > 0 && (
+        {showDialog && availableSaves.length > 0 && (
           <RecoveryDialog
             saves={availableSaves}
             onRecover={async (saveId) => {
