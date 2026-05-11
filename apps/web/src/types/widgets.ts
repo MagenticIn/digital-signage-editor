@@ -5,6 +5,7 @@ export type SignageWidgetType =
   | "clock"
   | "countdown"
   | "datasetView"
+  | "graphics"
   | "hls"
   | "htmlPackage"
   | "image"
@@ -18,6 +19,28 @@ export type SignageWidgetType =
   | "ticker"
   | "video"
   | "videoIn";
+
+export type GraphicsShapeType =
+  | "rectangle"
+  | "circle"
+  | "triangle"
+  | "star"
+  | "arrow"
+  | "polygon";
+
+export interface GraphicsWidgetConfig {
+  mode: "shape" | "emoji";
+  shapeType: GraphicsShapeType;
+  emoji: string;
+  /** rgba(r,g,b,a) — fill color (shape) or container background (emoji). */
+  backgroundColor: string;
+  /** rgba(r,g,b,a) — stroke color (shape mode only). */
+  borderColor: string;
+  /** px */
+  borderWidth: number;
+  /** px — applied to rectangle (shape mode) and the container (emoji mode). */
+  borderRadius: number;
+}
 
 export interface CalendarConfig {
   calendarUrl: string;
@@ -123,6 +146,9 @@ export interface TextWidgetConfig {
   backgroundColor: string;
   textAlign: "left" | "center" | "right";
   fontFamily: string;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
 }
 
 export interface NotificationConfig {
@@ -206,6 +232,7 @@ export type WidgetConfig =
   | ClockConfig
   | CountdownConfig
   | DatasetViewConfig
+  | GraphicsWidgetConfig
   | HLSConfig
   | HtmlPackageConfig
   | ImageWidgetConfig

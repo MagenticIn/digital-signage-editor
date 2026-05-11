@@ -19,7 +19,7 @@ import {
   LayoutGrid,
   Grid2x2,
   List,
-  Cloud,
+  // Cloud,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -104,6 +104,12 @@ const SIGNAGE_WIDGETS: {
     icon: "🗂️",
     label: "DataSet View",
     description: "Table/grid view for structured dataset rows.",
+  },
+  {
+    type: "graphics",
+    icon: "🔷",
+    label: "Graphics",
+    description: "Decorative shape or emoji block with fill, border, and corner radius.",
   },
   {
     type: "hls",
@@ -984,19 +990,6 @@ export const AssetsPanel: React.FC = () => {
           )}
         </button>
         <button
-          onClick={() => setActiveTab("text")}
-          className={`pb-3 transition-all relative ${
-            activeTab === "text"
-              ? "text-text-primary"
-              : "hover:text-text-secondary"
-          }`}
-        >
-          Text
-          {activeTab === "text" && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(34,197,94,0.5)]" />
-          )}
-        </button>
-        <button
           onClick={() => setActiveTab("widgets")}
           className={`pb-3 transition-all relative ${
             activeTab === "widgets"
@@ -1010,20 +1003,6 @@ export const AssetsPanel: React.FC = () => {
           )}
         </button>
         <button
-          onClick={() => setActiveTab("graphics")}
-          className={`pb-3 transition-all relative ${
-            activeTab === "graphics"
-              ? "text-text-primary"
-              : "hover:text-text-secondary"
-          }`}
-        >
-          Graphics
-          {activeTab === "graphics" && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(34,197,94,0.5)]" />
-          )}
-        </button>
-
-        <button
           onClick={() => setActiveTab("library")}
           className={`pb-3 transition-all relative flex items-center gap-1 ${
             activeTab === "library"
@@ -1031,7 +1010,6 @@ export const AssetsPanel: React.FC = () => {
               : "hover:text-text-secondary"
           }`}
         >
-          <Cloud size={11} />
           Library
           {activeTab === "library" && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(34,197,94,0.5)]" />

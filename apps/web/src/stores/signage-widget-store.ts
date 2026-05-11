@@ -7,6 +7,7 @@ import type {
   ClockConfig,
   CountdownConfig,
   DatasetViewConfig,
+  GraphicsWidgetConfig,
   HLSConfig,
   HtmlPackageConfig,
   ImageWidgetConfig,
@@ -32,6 +33,7 @@ type DefaultConfigs = {
   clock: ClockConfig;
   countdown: CountdownConfig;
   datasetView: DatasetViewConfig;
+  graphics: GraphicsWidgetConfig;
   hls: HLSConfig;
   htmlPackage: HtmlPackageConfig;
   image: ImageWidgetConfig;
@@ -107,6 +109,15 @@ export const defaultConfigs: DefaultConfigs = {
     rowBackground: "rgba(0,0,0,0)",
     rowTextColor: "rgba(255,255,255,1)",
   },
+  graphics: {
+    mode: "shape",
+    shapeType: "rectangle",
+    emoji: "⭐",
+    backgroundColor: "rgba(99,102,241,1)",
+    borderColor: "rgba(255,255,255,0)",
+    borderWidth: 0,
+    borderRadius: 0,
+  },
   hls: {
     streamUrl: "",
     autoplay: true,
@@ -173,6 +184,9 @@ export const defaultConfigs: DefaultConfigs = {
     backgroundColor: "rgba(0,0,0,0)",
     textAlign: "center",
     fontFamily: "Inter",
+    bold: false,
+    italic: false,
+    underline: false,
   },
   ticker: {
     mode: "text",
@@ -431,12 +445,16 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
 
   // Normalize color-bearing fields for the remaining widgets.
   if (widget.type === "text") {
-    const cfg = widget.config as TextWidgetConfig;
+    const cfg = widget.config as Partial<TextWidgetConfig>;
     widget.config = {
+      ...defaultConfigs.text,
       ...cfg,
-      color: normalizeColor(cfg.color),
-      backgroundColor: normalizeColor(cfg.backgroundColor),
-    };
+      color: normalizeColor(cfg.color ?? defaultConfigs.text.color),
+      backgroundColor: normalizeColor(cfg.backgroundColor ?? defaultConfigs.text.backgroundColor),
+      bold: cfg.bold ?? defaultConfigs.text.bold,
+      italic: cfg.italic ?? defaultConfigs.text.italic,
+      underline: cfg.underline ?? defaultConfigs.text.underline,
+    } as TextWidgetConfig;
   } else if (widget.type === "spacer") {
     const cfg = widget.config as SpacerConfig;
     widget.config = { ...cfg, backgroundColor: normalizeColor(cfg.backgroundColor) };
@@ -447,6 +465,14 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
       output: cfg.output ?? defaultConfigs.shellCommand.output,
       backgroundColor: normalizeColor(cfg.backgroundColor ?? defaultConfigs.shellCommand.backgroundColor),
     };
+  } else if (widget.type === "graphics") {
+    const cfg = widget.config as Partial<GraphicsWidgetConfig>;
+    widget.config = {
+      ...defaultConfigs.graphics,
+      ...cfg,
+      backgroundColor: normalizeColor(cfg.backgroundColor ?? defaultConfigs.graphics.backgroundColor),
+      borderColor: normalizeColor(cfg.borderColor ?? defaultConfigs.graphics.borderColor),
+    } as GraphicsWidgetConfig;
   }
 
   return widget;

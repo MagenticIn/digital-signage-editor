@@ -10,6 +10,12 @@ export interface ProjectSettings {
   readonly channels: number;
   /** Canvas background colour as rgba(r,g,b,a) or any CSS color string. Defaults to black. */
   readonly backgroundColor?: string;
+  /** Text shown on the empty canvas before any media/widgets are added. */
+  readonly placeholderText?: string;
+  /** Color of the placeholder text. CSS color string. */
+  readonly placeholderTextColor?: string;
+  /** Font size of the placeholder text in canvas pixels. */
+  readonly placeholderFontSize?: number;
 }
 
 export interface Project {

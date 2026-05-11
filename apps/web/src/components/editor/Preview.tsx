@@ -49,6 +49,7 @@ import type {
   ClockConfig,
   CountdownConfig,
   DatasetViewConfig,
+  GraphicsWidgetConfig,
   HLSConfig,
   HtmlPackageConfig,
   ImageWidgetConfig,
@@ -1614,8 +1615,10 @@ export const Preview: React.FC = () => {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const emptyBg = "#000000";
-      const emptyText = isDark ? "#52525b" : "#a1a1aa";
+      const emptyBg = settings.backgroundColor ?? "#000000";
+      const emptyText = settings.placeholderTextColor ?? (isDark ? "#52525b" : "#a1a1aa");
+      const placeholderFontSize = settings.placeholderFontSize ?? 24;
+      const placeholderText = settings.placeholderText ?? "Import media to get started";
       const textPrimary = isDark ? "#ffffff" : "#18181b";
       const textSecondary = isDark ? "#a1a1aa" : "#71717a";
 
@@ -1633,9 +1636,8 @@ export const Preview: React.FC = () => {
         ),
       );
 
-      ctx.fillStyle = hasVideoContent
-        ? "#000000"
-        : emptyBg;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = hasVideoContent ? "#000000" : emptyBg;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       let hasRenderedContent = false;
@@ -1756,10 +1758,10 @@ export const Preview: React.FC = () => {
         !hasActiveAudioClip
       ) {
         ctx.fillStyle = emptyText;
-        ctx.font = "24px Inter, sans-serif";
+        ctx.font = `${placeholderFontSize}px Inter, sans-serif`;
         ctx.textAlign = "center";
         ctx.fillText(
-          "Import media to get started",
+          placeholderText,
           canvas.width / 2,
           canvas.height / 2,
         );
@@ -4981,6 +4983,9 @@ export const Preview: React.FC = () => {
               backgroundColor: config.backgroundColor,
               fontSize: config.fontSize,
               fontFamily: config.fontFamily,
+              fontWeight: config.bold ? 700 : 400,
+              fontStyle: config.italic ? "italic" : "normal",
+              textDecoration: config.underline ? "underline" : "none",
             }}
           >
             {config.text}
@@ -5043,6 +5048,65 @@ export const Preview: React.FC = () => {
       if (widget.type === "spacer") {
         const config = widget.config as SpacerConfig;
         return <div className="w-full h-full" style={{ backgroundColor: config.backgroundColor }} />;
+      }
+      if (widget.type === "graphics") {
+        const c = widget.config as GraphicsWidgetConfig;
+        if (c.mode === "emoji") {
+          return (
+            <div
+              className="w-full h-full flex items-center justify-center overflow-hidden"
+              style={{
+                backgroundColor: c.backgroundColor,
+                borderRadius: c.borderRadius,
+                containerType: "size",
+              }}
+            >
+              <span style={{ fontSize: "80cqmin", lineHeight: 1 }}>{c.emoji}</span>
+            </div>
+          );
+        }
+        const stroke = c.borderWidth > 0 ? c.borderColor : "none";
+        if (c.shapeType === "rectangle") {
+          return (
+            <div
+              className="w-full h-full"
+              style={{
+                backgroundColor: c.backgroundColor,
+                border: c.borderWidth > 0 ? `${c.borderWidth}px solid ${c.borderColor}` : "none",
+                borderRadius: c.borderRadius,
+              }}
+            />
+          );
+        }
+        if (c.shapeType === "circle") {
+          return (
+            <div
+              className="w-full h-full"
+              style={{
+                backgroundColor: c.backgroundColor,
+                border: c.borderWidth > 0 ? `${c.borderWidth}px solid ${c.borderColor}` : "none",
+                borderRadius: "50%",
+              }}
+            />
+          );
+        }
+        const shapePaths: Record<Exclude<typeof c.shapeType, "rectangle" | "circle">, React.ReactElement> = {
+          triangle: <polygon points="50,5 95,95 5,95" fill={c.backgroundColor} stroke={stroke} strokeWidth={c.borderWidth} strokeLinejoin="round" />,
+          star: <polygon points="50,5 61,38 95,38 67,58 78,92 50,72 22,92 33,58 5,38 39,38" fill={c.backgroundColor} stroke={stroke} strokeWidth={c.borderWidth} strokeLinejoin="round" />,
+          arrow: <polygon points="5,38 60,38 60,18 95,50 60,82 60,62 5,62" fill={c.backgroundColor} stroke={stroke} strokeWidth={c.borderWidth} strokeLinejoin="round" />,
+          polygon: <polygon points="25,5 75,5 95,50 75,95 25,95 5,50" fill={c.backgroundColor} stroke={stroke} strokeWidth={c.borderWidth} strokeLinejoin="round" />,
+        };
+        return (
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            width="100%"
+            height="100%"
+            style={{ display: "block", overflow: "visible" }}
+          >
+            {shapePaths[c.shapeType]}
+          </svg>
+        );
       }
       if (widget.type === "videoIn") {
         const config = widget.config as VideoInConfig;
@@ -5130,7 +5194,7 @@ export const Preview: React.FC = () => {
                   width: "100%",
                   height: "100%",
                   maxWidth: "none",
-                  backgroundColor: settings.backgroundColor ?? "#000",
+                  backgroundColor: "#000",
                 }
               : {
                   width: "100%",
@@ -5138,7 +5202,7 @@ export const Preview: React.FC = () => {
                   maxWidth: "100%",
                   maxHeight: "100%",
                   aspectRatio: `${settings.width} / ${settings.height}`,
-                  backgroundColor: settings.backgroundColor ?? "#000",
+                  backgroundColor: "#000",
                 }
           }
         >

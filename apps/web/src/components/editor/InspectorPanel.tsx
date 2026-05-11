@@ -116,6 +116,9 @@ const CanvasSettings: React.FC = () => {
   const [heightInput, setHeightInput] = React.useState<string>(
     settings ? String(settings.height) : "",
   );
+  const [placeholderFontSizeInput, setPlaceholderFontSizeInput] = React.useState<string>(
+    settings?.placeholderFontSize !== undefined ? String(settings.placeholderFontSize) : "24",
+  );
 
   React.useEffect(() => {
     if (settings) setWidthInput(String(settings.width));
@@ -123,6 +126,9 @@ const CanvasSettings: React.FC = () => {
   React.useEffect(() => {
     if (settings) setHeightInput(String(settings.height));
   }, [settings?.height]);
+  React.useEffect(() => {
+    if (settings) setPlaceholderFontSizeInput(String(settings.placeholderFontSize ?? 24));
+  }, [settings?.placeholderFontSize]);
 
   if (!settings) {
     return (
@@ -133,6 +139,8 @@ const CanvasSettings: React.FC = () => {
   }
 
   const bg = settings.backgroundColor ?? "rgba(0,0,0,1)";
+  const placeholderText = settings.placeholderText ?? "Import media to get started";
+  const placeholderColor = settings.placeholderTextColor ?? "rgba(161,161,170,1)";
 
   const commitWidth = () => {
     const parsed = Number(widthInput);
@@ -149,6 +157,15 @@ const CanvasSettings: React.FC = () => {
       return;
     }
     if (parsed !== settings.height) void updateSettings({ height: parsed });
+  };
+  const commitPlaceholderFontSize = () => {
+    const parsed = Number(placeholderFontSizeInput);
+    const current = settings.placeholderFontSize ?? 24;
+    if (!Number.isFinite(parsed) || parsed < 6) {
+      setPlaceholderFontSizeInput(String(current));
+      return;
+    }
+    if (parsed !== current) void updateSettings({ placeholderFontSize: parsed });
   };
 
   return (
@@ -198,6 +215,43 @@ const CanvasSettings: React.FC = () => {
         />
         <p className="text-[10px] text-text-muted">
           Press Enter or click away to apply width / height. Values below 32 revert.
+        </p>
+      </div>
+
+      <div className="text-[10px] uppercase tracking-wider text-text-muted">Placeholder</div>
+      <div className="rounded-lg border border-border p-3 bg-background-tertiary space-y-2">
+        <div>
+          <label className="text-[10px] text-text-secondary block mb-1">Text</label>
+          <input
+            className="w-full bg-background border border-border rounded px-2 py-1 text-xs"
+            value={placeholderText}
+            onChange={(e) => void updateSettings({ placeholderText: e.target.value })}
+          />
+        </div>
+        <ColorOpacityInput
+          label="Text color"
+          value={placeholderColor}
+          onChange={(rgba) => void updateSettings({ placeholderTextColor: rgba })}
+        />
+        <div>
+          <label className="text-[10px] text-text-secondary block mb-1">Font size (px)</label>
+          <input
+            type="number"
+            min={6}
+            className="w-full bg-background border border-border rounded px-2 py-1 text-xs"
+            value={placeholderFontSizeInput}
+            onChange={(e) => setPlaceholderFontSizeInput(e.target.value)}
+            onBlur={commitPlaceholderFontSize}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                commitPlaceholderFontSize();
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+        </div>
+        <p className="text-[10px] text-text-muted">
+          Shown only when the canvas is empty.
         </p>
       </div>
     </div>

@@ -1,4 +1,15 @@
 import React from "react";
+import {
+  Bold,
+  Italic,
+  Underline,
+  Square,
+  Circle as CircleIcon,
+  Triangle,
+  Star,
+  ArrowRight,
+  Hexagon,
+} from "lucide-react";
 import { useSignageWidgetStore } from "../../../stores/signage-widget-store";
 import * as pdfjs from "pdfjs-dist";
 import type {
@@ -8,6 +19,8 @@ import type {
   ClockConfig,
   CountdownConfig,
   DatasetViewConfig,
+  GraphicsShapeType,
+  GraphicsWidgetConfig,
   HLSConfig,
   HtmlPackageConfig,
   ImageWidgetConfig,
@@ -211,6 +224,9 @@ export const WidgetInspector: React.FC<WidgetInspectorProps> = ({ widget }) => {
       )}
       {widget.type === "spacer" && (
         <SpacerFields config={widget.config as SpacerConfig} onChange={updateConfig} />
+      )}
+      {widget.type === "graphics" && (
+        <GraphicsFields config={widget.config as GraphicsWidgetConfig} onChange={updateConfig} />
       )}
       {widget.type === "videoIn" && (
         <VideoInFields config={widget.config as VideoInConfig} onChange={updateConfig} />
@@ -909,6 +925,30 @@ const TextFields = ({ config, onChange }: { config: TextWidgetConfig; onChange: 
       </select>
     </div>
     <div>
+      <label className={labelClass}>Style</label>
+      <div className="flex gap-1">
+        {([
+          { key: "bold" as const, icon: Bold, title: "Bold" },
+          { key: "italic" as const, icon: Italic, title: "Italic" },
+          { key: "underline" as const, icon: Underline, title: "Underline" },
+        ]).map(({ key, icon: Icon, title }) => (
+          <button
+            key={key}
+            type="button"
+            title={title}
+            onClick={() => onChange({ ...config, [key]: !config[key] })}
+            className={`flex-1 flex items-center justify-center py-1.5 rounded border transition-colors ${
+              config[key]
+                ? "bg-primary/15 border-primary/40 text-primary"
+                : "bg-background border-border text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            <Icon size={13} />
+          </button>
+        ))}
+      </div>
+    </div>
+    <div>
       <label className={labelClass}>Font family</label>
       <select className={inputClass} value={config.fontFamily} onChange={(e) => onChange({ ...config, fontFamily: e.target.value })}>
         <option value="Inter">Inter</option>
@@ -1089,6 +1129,132 @@ const ShellCommandFields = ({ config, onChange }: { config: ShellCommandConfig; 
 const SpacerFields = ({ config, onChange }: { config: SpacerConfig; onChange: (v: SpacerConfig) => void }) => (
   <div className={sectionClass}>
     <ColorOpacityInput label="Background color" value={config.backgroundColor} onChange={(rgba) => onChange({ ...config, backgroundColor: rgba })} />
+  </div>
+);
+
+const GRAPHICS_SHAPES: { type: GraphicsShapeType; icon: React.ComponentType<{ size?: number | string }>; label: string }[] = [
+  { type: "rectangle", icon: Square, label: "Rectangle" },
+  { type: "circle", icon: CircleIcon, label: "Circle" },
+  { type: "triangle", icon: Triangle, label: "Triangle" },
+  { type: "star", icon: Star, label: "Star" },
+  { type: "arrow", icon: ArrowRight, label: "Arrow" },
+  { type: "polygon", icon: Hexagon, label: "Polygon" },
+];
+
+const GRAPHICS_EMOJIS = ["😀", "🎉", "❤️", "⭐", "🔥", "👍", "🎬", "🎵"];
+
+const GraphicsFields = ({ config, onChange }: { config: GraphicsWidgetConfig; onChange: (v: GraphicsWidgetConfig) => void }) => (
+  <div className={sectionClass}>
+    <div>
+      <label className={labelClass}>Mode</label>
+      <div className="flex gap-1">
+        {(["shape", "emoji"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => onChange({ ...config, mode: m })}
+            className={`flex-1 py-1.5 text-[11px] rounded border transition-colors ${
+              config.mode === m
+                ? "bg-primary/15 border-primary/40 text-primary"
+                : "bg-background border-border text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            {m === "shape" ? "Shape" : "Emoji"}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    {config.mode === "shape" && (
+      <>
+        <div>
+          <label className={labelClass}>Shape</label>
+          <div className="grid grid-cols-3 gap-1">
+            {GRAPHICS_SHAPES.map(({ type, icon: Icon, label }) => (
+              <button
+                key={type}
+                type="button"
+                title={label}
+                onClick={() => onChange({ ...config, shapeType: type })}
+                className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded border transition-colors ${
+                  config.shapeType === type
+                    ? "bg-primary/15 border-primary/40 text-primary"
+                    : "bg-background border-border text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                <Icon size={16} />
+                <span className="text-[9px]">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <ColorOpacityInput label="Fill" value={config.backgroundColor} onChange={(rgba) => onChange({ ...config, backgroundColor: rgba })} />
+        <ColorOpacityInput label="Border color" value={config.borderColor} onChange={(rgba) => onChange({ ...config, borderColor: rgba })} />
+        <div>
+          <label className={labelClass}>Border width (px)</label>
+          <input
+            type="number"
+            min={0}
+            className={inputClass}
+            value={config.borderWidth}
+            onChange={(e) => onChange({ ...config, borderWidth: Math.max(0, Number(e.target.value) || 0) })}
+          />
+        </div>
+        {config.shapeType === "rectangle" && (
+          <div>
+            <label className={labelClass}>Corner radius (px)</label>
+            <input
+              type="number"
+              min={0}
+              className={inputClass}
+              value={config.borderRadius}
+              onChange={(e) => onChange({ ...config, borderRadius: Math.max(0, Number(e.target.value) || 0) })}
+            />
+          </div>
+        )}
+      </>
+    )}
+
+    {config.mode === "emoji" && (
+      <>
+        <div>
+          <label className={labelClass}>Emoji</label>
+          <div className="grid grid-cols-4 gap-1 mb-2">
+            {GRAPHICS_EMOJIS.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => onChange({ ...config, emoji: e })}
+                className={`aspect-square rounded border text-xl transition-colors ${
+                  config.emoji === e
+                    ? "bg-primary/15 border-primary/40"
+                    : "bg-background border-border hover:border-primary/40"
+                }`}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+          <input
+            className={inputClass}
+            value={config.emoji}
+            placeholder="Or paste any emoji"
+            onChange={(e) => onChange({ ...config, emoji: e.target.value })}
+          />
+        </div>
+        <ColorOpacityInput label="Background" value={config.backgroundColor} onChange={(rgba) => onChange({ ...config, backgroundColor: rgba })} />
+        <div>
+          <label className={labelClass}>Corner radius (px)</label>
+          <input
+            type="number"
+            min={0}
+            className={inputClass}
+            value={config.borderRadius}
+            onChange={(e) => onChange({ ...config, borderRadius: Math.max(0, Number(e.target.value) || 0) })}
+          />
+        </div>
+      </>
+    )}
   </div>
 );
 

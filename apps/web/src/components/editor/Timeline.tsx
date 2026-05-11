@@ -9,17 +9,17 @@ import {
   Undo2,
   Redo2,
   Layers,
-  Film,
-  Music,
-  Image,
-  Type,
-  Shapes,
-  Scissors,
+  // Film,
+  // Music,
+  // Image,
+  // Type,
+  // Shapes,
+  // Scissors,
   ChevronUp,
   ChevronDown,
   Trash2,
-  Plus,
-  ChevronDown as ChevronDownIcon,
+  // Plus,
+  // ChevronDown as ChevronDownIcon,
   Rows3,
   Rows2,
   X,
@@ -41,11 +41,11 @@ import {
   Popover,
   PopoverTrigger,
   PopoverContent,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
+  // DropdownMenu,
+  // DropdownMenuTrigger,
+  // DropdownMenuContent,
+  // DropdownMenuItem,
+  // DropdownMenuSeparator,
 } from "@openreel/ui";
 import {
   Playhead,
@@ -68,9 +68,9 @@ export const Timeline: React.FC = () => {
     redo,
     canUndo,
     canRedo,
-    splitClip,
+    // splitClip,
     removeClip,
-    addTrack,
+    // addTrack,
     reorderTrack,
     deleteShapeClip,
     deleteSVGClip,
@@ -477,11 +477,11 @@ export const Timeline: React.FC = () => {
     [tracks, updateClipKeyframes]
   );
 
-  const handleSplit = useCallback(async () => {
-    if (selectedClipIds.length === 1) {
-      await splitClip(selectedClipIds[0], playheadPosition);
-    }
-  }, [selectedClipIds, playheadPosition, splitClip]);
+  // const handleSplit = useCallback(async () => {
+  //   if (selectedClipIds.length === 1) {
+  //     await splitClip(selectedClipIds[0], playheadPosition);
+  //   }
+  // }, [selectedClipIds, playheadPosition, splitClip]);
 
   const handleDelete = useCallback(async () => {
     if (selectedWidgetId) {
@@ -873,6 +873,7 @@ export const Timeline: React.FC = () => {
           <div className="w-px h-6 bg-border mx-1" />
 
           <div className="flex bg-background-tertiary rounded-lg p-1 border border-border gap-1">
+            {/*
             <button
               onClick={handleSplit}
               disabled={selectedClipIds.length !== 1}
@@ -886,6 +887,7 @@ export const Timeline: React.FC = () => {
               <Scissors size={14} />
               <span className="text-[10px] font-medium">SPLIT</span>
             </button>
+            */}
             <IconButton
               icon={Trash2}
               onClick={handleDelete}
@@ -897,6 +899,7 @@ export const Timeline: React.FC = () => {
 
           <div className="w-px h-6 bg-border mx-1" />
 
+          {/*
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -934,6 +937,7 @@ export const Timeline: React.FC = () => {
           </DropdownMenu>
 
           <div className="w-px h-6 bg-border mx-1" />
+          */}
 
           <Popover open={showLayersPanel} onOpenChange={setShowLayersPanel}>
             <PopoverTrigger asChild>
