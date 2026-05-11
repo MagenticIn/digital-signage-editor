@@ -4931,20 +4931,38 @@ export const Preview: React.FC = () => {
       }
       if (widget.type === "audio") {
         const config = widget.config as AudioWidgetConfig;
+        const hasSource = !!config.audioUrl;
         return (
-          <div className="relative w-full h-full flex flex-col items-center justify-center gap-2 text-white px-3 bg-black/40">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <span>🎵</span>
-              <span>{config.title || "Audio"}</span>
-            </div>
-            {config.audioUrl ? (
-              <div className="text-[10px] text-white/60 truncate max-w-full">
-                {config.audioUrl}
-              </div>
-            ) : (
-              <div className="text-[10px] text-white/50">No source</div>
+          <div className={`relative w-full h-full ${config.hideUI ? "" : "flex flex-col items-center justify-center gap-2 text-white px-3 bg-black/40"}`}>
+            {!config.hideUI && (
+              <>
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <span>🎵</span>
+                  <span>{config.title || "Audio"}</span>
+                  {config.muted && <span className="text-[10px] text-yellow-400/80">(muted)</span>}
+                </div>
+                {hasSource ? (
+                  <div className="text-[10px] text-white/60 truncate max-w-full">
+                    {config.audioUrl}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-white/50">No source</div>
+                )}
+              </>
             )}
-            <audio src={config.audioUrl} autoPlay loop className="hidden" />
+            {hasSource && (
+              <audio
+                key={`${config.audioUrl}|${config.autoplay}|${config.loop}|${config.muted}|${config.volume}`}
+                src={config.audioUrl}
+                autoPlay={config.autoplay}
+                loop={config.loop}
+                muted={config.muted}
+                ref={(el) => {
+                  if (el) el.volume = Math.min(1, Math.max(0, config.volume ?? 1));
+                }}
+                className="hidden"
+              />
+            )}
             <div className="absolute inset-0 z-10" aria-hidden />
           </div>
         );
@@ -5251,7 +5269,6 @@ export const Preview: React.FC = () => {
             const layout = widget.layout ?? { x: 40, y: 40, width: 360, height: 220 };
             const selected = selectedWidgetId === widget.id;
             const isTicker = widget.type === "ticker";
-            const tickerConfig = isTicker ? (widget.config as TickerConfig) : null;
             const baseWidth = 360;
             const baseHeight = 220;
             const fitScale = isTicker
@@ -5272,20 +5289,10 @@ export const Preview: React.FC = () => {
                 style={{
                   position: "absolute",
                   pointerEvents: "auto",
-                  ...(isTicker
-                    ? {
-                        left: 0,
-                        right: 0,
-                        width: "100%",
-                        height: Math.max(40, layout.height),
-                        ...(tickerConfig?.position === "top" ? { top: 0 } : { bottom: 0 }),
-                      }
-                    : {
-                        left: layout.x,
-                        top: layout.y,
-                        width: layout.width,
-                        height: layout.height,
-                      }),
+                  left: layout.x,
+                  top: layout.y,
+                  width: layout.width,
+                  height: layout.height,
                   overflow: "hidden",
                 }}
                 onMouseDown={(e) => {
@@ -5315,7 +5322,7 @@ export const Preview: React.FC = () => {
                     </div>
                   )}
                 </div>
-                {selected && !widget.locked && !isTicker && (
+                {selected && !widget.locked && (
                   <>
                     <button
                       className="absolute -top-7 right-0 text-[10px] px-2 py-1 rounded bg-black/70 text-white border border-white/20"

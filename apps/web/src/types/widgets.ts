@@ -116,7 +116,6 @@ export interface TickerConfig {
   textColor: string;
   fontFamily?: string;
   fontSize: number;
-  position: "top" | "bottom";
   dataSource?: string;
   refreshInterval?: number;
 }
@@ -223,6 +222,16 @@ export interface VideoWidgetConfig {
 export interface AudioWidgetConfig {
   audioUrl: string;
   title?: string;
+  /** Autoplay on widget mount. Defaults to true. Browsers require muted=true for autoplay. */
+  autoplay: boolean;
+  /** Loop playback. Defaults to true. */
+  loop: boolean;
+  /** Start muted (required for autoplay). Defaults to true. */
+  muted: boolean;
+  /** Linear volume 0..1. Applied to the audio element. */
+  volume: number;
+  /** When true, hide the audio info card and render an invisible drag handle (audio still plays). */
+  hideUI: boolean;
 }
 
 export type WidgetConfig =

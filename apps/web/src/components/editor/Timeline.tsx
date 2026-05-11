@@ -1454,24 +1454,14 @@ export const Timeline: React.FC = () => {
                     onClick={(e) => e.stopPropagation()}
                   >
                     <button
-                      className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-background-elevated"
+                      className="w-full text-left px-2 py-1.5 text-xs rounded text-red-300 hover:bg-red-500/20"
                       onClick={() => {
-                        addWidget({
-                          id: uuidv4(),
-                          type: widget.type,
-                          startTime: widget.startTime + 0.5,
-                          duration: widget.duration,
-                          config: structuredClone(widget.config),
-                          locked: false,
-                          hidden: widget.hidden,
-                          layout: widget.layout
-                            ? { ...widget.layout, x: widget.layout.x + 20, y: widget.layout.y + 20 }
-                            : { x: 40, y: 40, width: 360, height: 220 },
-                        });
+                        removeWidget(widget.id);
+                        if (selectedWidgetId === widget.id) clearSelection();
                         setWidgetMenu(null);
                       }}
                     >
-                      Duplicate
+                      Delete
                     </button>
                     <button
                       className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-background-elevated"
@@ -1490,16 +1480,6 @@ export const Timeline: React.FC = () => {
                       }}
                     >
                       {widget.hidden ? "Show" : "Hide"}
-                    </button>
-                    <button
-                      className="w-full text-left px-2 py-1.5 text-xs rounded text-red-300 hover:bg-red-500/20"
-                      onClick={() => {
-                        removeWidget(widget.id);
-                        if (selectedWidgetId === widget.id) clearSelection();
-                        setWidgetMenu(null);
-                      }}
-                    >
-                      Delete
                     </button>
                   </div>
                 );

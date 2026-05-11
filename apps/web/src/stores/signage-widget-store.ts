@@ -61,6 +61,11 @@ export const defaultConfigs: DefaultConfigs = {
   audio: {
     audioUrl: "",
     title: "Now Playing",
+    autoplay: true,
+    loop: true,
+    muted: true,
+    volume: 1,
+    hideUI: false,
   },
   calendar: {
     calendarUrl: "",
@@ -197,7 +202,6 @@ export const defaultConfigs: DefaultConfigs = {
     textColor: "rgba(255,255,255,1)",
     fontFamily: "Inter",
     fontSize: 24,
-    position: "bottom",
     refreshInterval: 60,
   },
   video: {
@@ -283,7 +287,6 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
       backgroundColor: normalizeColor(legacy.backgroundColor ?? defaultConfigs.ticker.backgroundColor),
       textColor: normalizeColor(legacy.textColor ?? defaultConfigs.ticker.textColor),
       fontSize: 22,
-      position: "bottom",
     };
     return widget;
   }
@@ -412,6 +415,11 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
     widget.config = {
       audioUrl: cfg.audioUrl ?? "",
       title: cfg.title === "" ? undefined : (cfg.title ?? defaultConfigs.audio.title),
+      autoplay: cfg.autoplay ?? defaultConfigs.audio.autoplay,
+      loop: cfg.loop ?? defaultConfigs.audio.loop,
+      muted: cfg.muted ?? defaultConfigs.audio.muted,
+      volume: cfg.volume ?? defaultConfigs.audio.volume,
+      hideUI: cfg.hideUI ?? defaultConfigs.audio.hideUI,
     };
     return widget;
   }

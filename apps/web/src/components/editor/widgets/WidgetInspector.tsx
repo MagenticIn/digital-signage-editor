@@ -483,18 +483,6 @@ const TickerFields = ({
       </div>
     </div>
 
-    <div>
-      <label className={labelClass}>Position</label>
-      <select
-        className={inputClass}
-        value={config.position}
-        onChange={(e) => onChange({ ...config, position: e.target.value as TickerConfig["position"] })}
-      >
-        <option value="top">Top</option>
-        <option value="bottom">Bottom</option>
-      </select>
-    </div>
-
     {layout && onLayoutChange && (
       <div className="pt-2 border-t border-border mt-2">
         <label className="text-[10px] text-text-secondary flex justify-between">
@@ -1376,35 +1364,69 @@ const VideoFields = ({ config, onChange }: { config: VideoWidgetConfig; onChange
   </div>
 );
 
-const AudioFields = ({ config, onChange }: { config: AudioWidgetConfig; onChange: (v: AudioWidgetConfig) => void }) => (
-  <div className={sectionClass}>
-    <div>
-      <label className={labelClass}>Audio URL</label>
-      <input className={inputClass} value={config.audioUrl} onChange={(e) => onChange({ ...config, audioUrl: e.target.value })} placeholder="https://..." />
-    </div>
-    <div>
-      <label className={labelClass}>or choose a local file</label>
+const AudioFields = ({ config, onChange }: { config: AudioWidgetConfig; onChange: (v: AudioWidgetConfig) => void }) => {
+  const toggle = (key: "autoplay" | "loop" | "muted" | "hideUI", label: string, help?: string) => (
+    <label className="flex items-start gap-2 text-xs text-text-secondary cursor-pointer">
       <input
-        type="file"
-        accept="audio/*"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          const url = URL.createObjectURL(file);
-          onChange({ ...config, audioUrl: url });
-        }}
+        type="checkbox"
+        className="mt-0.5"
+        checked={config[key]}
+        onChange={(e) => onChange({ ...config, [key]: e.target.checked })}
       />
+      <span className="flex flex-col">
+        <span className="text-text-primary">{label}</span>
+        {help && <span className="text-[10px] text-text-muted">{help}</span>}
+      </span>
+    </label>
+  );
+  return (
+    <div className={sectionClass}>
+      <div>
+        <label className={labelClass}>Audio URL</label>
+        <input className={inputClass} value={config.audioUrl} onChange={(e) => onChange({ ...config, audioUrl: e.target.value })} placeholder="https://..." />
+      </div>
+      <div>
+        <label className={labelClass}>or choose a local file</label>
+        <input
+          type="file"
+          accept="audio/*"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            onChange({ ...config, audioUrl: url });
+          }}
+        />
+      </div>
+      <div>
+        <label className={labelClass}>Title (optional)</label>
+        <input
+          className={inputClass}
+          value={config.title ?? ""}
+          onChange={(e) => onChange({ ...config, title: e.target.value || undefined })}
+          placeholder="Leave blank to hide"
+        />
+      </div>
+      <div>
+        <label className={labelClass}>Volume — {Math.round((config.volume ?? 1) * 100)}%</label>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={config.volume ?? 1}
+          className="w-full"
+          onChange={(e) => onChange({ ...config, volume: Number(e.target.value) })}
+        />
+      </div>
+      <div className="space-y-1.5 pt-1">
+        {toggle("autoplay", "Autoplay", "Start when the widget mounts.")}
+        {toggle("loop", "Loop", "Restart when playback ends.")}
+        {toggle("muted", "Muted", "Required by browsers for autoplay without user interaction.")}
+        {toggle("hideUI", "Hide UI", "Hide the title/source card and let audio play invisibly.")}
+      </div>
     </div>
-    <div>
-      <label className={labelClass}>Title (optional)</label>
-      <input
-        className={inputClass}
-        value={config.title ?? ""}
-        onChange={(e) => onChange({ ...config, title: e.target.value || undefined })}
-        placeholder="Leave blank to hide"
-      />
-    </div>
-  </div>
-);
+  );
+};
 
 export default WidgetInspector;
