@@ -943,18 +943,24 @@ export const AssetsPanel: React.FC = () => {
         layout = { x: 40, y: 40, width: 800, height: 96 };
       }
 
+      // Span the full layout by default so a freshly-added widget is visible
+      // for the whole play time — override → auto-derived → 10 s fallback.
+      const layoutDuration =
+        project.settings.playDuration ?? project.timeline.duration ?? 0;
+      const widgetDuration = layoutDuration > 0 ? layoutDuration : 10;
+
       addWidget({
         id: uuidv4(),
         type,
         startTime: 0,
-        duration: 10,
+        duration: widgetDuration,
         config: cloneDefaultWidgetConfig(type),
         locked: false,
         hidden: false,
         layout,
       });
     },
-    [addWidget],
+    [addWidget, project.settings.playDuration, project.timeline.duration],
   );
 
   return (

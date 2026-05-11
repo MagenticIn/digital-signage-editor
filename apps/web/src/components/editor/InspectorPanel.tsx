@@ -134,10 +134,21 @@ const CanvasSettings: React.FC = () => {
   const [placeholderFontSizeInput, setPlaceholderFontSizeInput] = React.useState<string>(
     settings?.placeholderFontSize !== undefined ? String(settings.placeholderFontSize) : "24",
   );
+  const initialPlayDuration =
+    settings?.playDuration ?? project?.timeline.duration ?? 0;
+  const [playDurationInput, setPlayDurationInput] = React.useState<string>(
+    initialPlayDuration > 0 ? initialPlayDuration.toFixed(2).replace(/\.?0+$/, "") : "",
+  );
 
   React.useEffect(() => {
     if (settings) setPlaceholderFontSizeInput(String(settings.placeholderFontSize ?? 24));
   }, [settings?.placeholderFontSize]);
+  React.useEffect(() => {
+    const effective = settings?.playDuration ?? project?.timeline.duration ?? 0;
+    setPlayDurationInput(
+      effective > 0 ? effective.toFixed(2).replace(/\.?0+$/, "") : "",
+    );
+  }, [settings?.playDuration, project?.timeline.duration]);
 
   if (!settings) {
     return (
@@ -170,6 +181,23 @@ const CanvasSettings: React.FC = () => {
     }
     if (parsed !== current) void updateSettings({ placeholderFontSize: parsed });
   };
+  const autoDuration = project?.timeline.duration ?? 0;
+  const commitPlayDuration = () => {
+    const trimmed = playDurationInput.trim();
+    if (trimmed === "") {
+      if (settings.playDuration !== undefined) void updateSettings({ playDuration: undefined });
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      const fallback = settings.playDuration ?? autoDuration;
+      setPlayDurationInput(
+        fallback > 0 ? fallback.toFixed(2).replace(/\.?0+$/, "") : "",
+      );
+      return;
+    }
+    if (parsed !== settings.playDuration) void updateSettings({ playDuration: parsed });
+  };
 
   return (
     <div className="p-4 space-y-3">
@@ -199,6 +227,52 @@ const CanvasSettings: React.FC = () => {
           value={bg}
           onChange={(rgba) => void updateSettings({ backgroundColor: rgba })}
         />
+        <div>
+          <label className="text-[10px] text-text-secondary flex items-center justify-between mb-1">
+            <span>Duration (seconds)</span>
+            {settings.playDuration !== undefined && (
+              <button
+                type="button"
+                onClick={() => {
+                  void updateSettings({ playDuration: undefined });
+                  setPlayDurationInput(
+                    autoDuration > 0
+                      ? autoDuration.toFixed(2).replace(/\.?0+$/, "")
+                      : "",
+                  );
+                }}
+                className="text-[9px] text-text-muted hover:text-text-primary underline"
+              >
+                Use auto
+              </button>
+            )}
+          </label>
+          <input
+            type="number"
+            min={0.1}
+            step={0.1}
+            className="w-full bg-background border border-border rounded px-2 py-1 text-xs"
+            value={playDurationInput}
+            placeholder={
+              autoDuration > 0
+                ? `Auto: ${autoDuration.toFixed(1)}s`
+                : "Auto"
+            }
+            onChange={(e) => setPlayDurationInput(e.target.value)}
+            onBlur={commitPlayDuration}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                commitPlayDuration();
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+          <p className="text-[10px] text-text-muted mt-1">
+            {settings.playDuration !== undefined
+              ? "Layout plays for this duration. Clear the field or click “Use auto” to revert to the max clip end."
+              : `Auto-derived from clips. Type a value to override the layout play time.`}
+          </p>
+        </div>
       </div>
 
       <div className="text-[10px] uppercase tracking-wider text-text-muted">Placeholder</div>

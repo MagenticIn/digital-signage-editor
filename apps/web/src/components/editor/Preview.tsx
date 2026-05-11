@@ -514,8 +514,13 @@ export const Preview: React.FC = () => {
 
   // Calculate the actual end time for playback (where clips actually end)
   // This needs to recalculate whenever the timeline changes
-  // Includes video/audio/image clips, text clips, and shape clips
+  // Includes video/audio/image clips, text clips, and shape clips.
+  // Honors project.settings.playDuration when set as an explicit override.
   const actualEndTime = React.useMemo(() => {
+    const override = project.settings.playDuration;
+    if (typeof override === "number" && Number.isFinite(override) && override > 0) {
+      return override;
+    }
     const tracks = project.timeline.tracks;
     let maxEnd = 0;
 
@@ -537,7 +542,7 @@ export const Preview: React.FC = () => {
     }
 
     return maxEnd;
-  }, [project.timeline.tracks, allTextClips, allShapeClips]);
+  }, [project.timeline.tracks, project.settings.playDuration, allTextClips, allShapeClips]);
 
   // RenderBridge is guaranteed to be initialized before Preview renders (see EditorInterface)
   useEffect(() => {

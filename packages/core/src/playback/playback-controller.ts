@@ -1,4 +1,4 @@
-import type { Project } from "../types/project";
+import { getEffectiveProjectDuration, type Project } from "../types/project";
 import type { VideoEngine } from "../video/video-engine";
 import type { AudioEngine } from "../audio/audio-engine";
 import type { RenderedFrame } from "../video/types";
@@ -149,7 +149,7 @@ export class PlaybackController {
   setProject(project: Project): void {
     this.project = project;
     this.state = "stopped";
-    this.masterClock.setDuration(project.timeline.duration);
+    this.masterClock.setDuration(getEffectiveProjectDuration(project));
     this.clearAudioBuffer();
   }
 
@@ -187,7 +187,7 @@ export class PlaybackController {
 
     if (this.state === "playing") return;
 
-    const duration = this.project.timeline.duration;
+    const duration = getEffectiveProjectDuration(this.project);
     if (this.masterClock.currentTime >= duration) {
       this.masterClock.seek(0);
     }
@@ -271,7 +271,7 @@ export class PlaybackController {
 
     const wasPlaying = this.state === "playing";
 
-    const duration = this.project.timeline.duration;
+    const duration = getEffectiveProjectDuration(this.project);
     const clampedTime = Math.max(0, Math.min(time, duration));
 
     this.masterClock.seek(clampedTime);
@@ -310,7 +310,7 @@ export class PlaybackController {
       };
     }
 
-    const duration = this.project.timeline.duration;
+    const duration = getEffectiveProjectDuration(this.project);
     const clampedTime = Math.max(0, Math.min(time, duration));
 
     this.masterClock.seek(clampedTime);

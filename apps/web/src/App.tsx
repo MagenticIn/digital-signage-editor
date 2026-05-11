@@ -26,6 +26,8 @@ function isEditorProjectShape(data: unknown): data is Project {
 }
 import { setSignageAuth, getSignageLayout, isSignageLayoutsConnected } from "./services/signage-layouts-api";
 import { useSignageMediaStore } from "./stores/signage-media-store";
+import { readPreviewSnapshot } from "./services/preview-snapshot";
+import { useSignageWidgetStore } from "./stores/signage-widget-store";
 
 const EditorInterface = lazy(() =>
   import("./components/editor/EditorInterface").then((m) => ({
@@ -62,6 +64,36 @@ function App() {
   // Track whether we are still fetching the signage layout before showing the editor.
   const [signageLoading, setSignageLoading] = useState(false);
   const [signageLoadError, setSignageLoadError] = useState<string | null>(null);
+
+  // Fullscreen preview state — populated by reading the sessionStorage snapshot
+  // when the URL contains `?fullscreen=1`.
+  const isFullscreenPreview = params.fullscreen === "1";
+  const [fullscreenHydrated, setFullscreenHydrated] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const fullscreenHydrationRef = useRef(false);
+
+  useEffect(() => {
+    if (!isFullscreenPreview) return;
+    if (fullscreenHydrationRef.current) return;
+    fullscreenHydrationRef.current = true;
+
+    const snapshot = readPreviewSnapshot();
+    if (!snapshot) {
+      setFullscreenError("No preview data found. Open this from the editor's Preview button.");
+      return;
+    }
+    try {
+      loadProject(snapshot.project);
+      useSignageWidgetStore.setState({ widgets: snapshot.signageWidgets });
+      const { setPanelVisible } = useUIStore.getState();
+      setPanelVisible("mediaLibrary", false);
+      setPanelVisible("inspector", false);
+      setPanelVisible("timeline", false);
+      setFullscreenHydrated(true);
+    } catch (err) {
+      setFullscreenError(err instanceof Error ? err.message : "Failed to load preview snapshot.");
+    }
+  }, [isFullscreenPreview, loadProject]);
 
 
   // ---------------------------------------------------------------------------
@@ -250,7 +282,9 @@ function App() {
   }, [handleKeyDown]);
 
   const showWelcome =
-    ["welcome", "templates", "recent"].includes(route) && !skipWelcomeScreen;
+    !isFullscreenPreview &&
+    ["welcome", "templates", "recent"].includes(route) &&
+    !skipWelcomeScreen;
   const initialTab =
     route === "templates"
       ? "templates"
@@ -267,6 +301,13 @@ function App() {
         <MobileBlocker />
         {isSharePage ? (
           <SharePage shareId={params.shareId!} />
+        ) : isFullscreenPreview && fullscreenError ? (
+          <div className="h-screen w-screen bg-black text-white flex flex-col items-center justify-center gap-2 text-sm">
+            <span>{fullscreenError}</span>
+            <span className="text-xs text-white/50">Close this tab and try again from the editor.</span>
+          </div>
+        ) : isFullscreenPreview && !fullscreenHydrated ? (
+          <LoadingSpinner message="Loading preview…" />
         ) : showWelcome ? (
           <WelcomeScreen initialTab={initialTab} />
         ) : signageLoading ? (

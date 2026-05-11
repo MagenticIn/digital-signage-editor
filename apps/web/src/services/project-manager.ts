@@ -1,4 +1,4 @@
-import type { Project, ProjectSettings } from "@openreel/core";
+import { getEffectiveProjectDuration, type Project, type ProjectSettings } from "@openreel/core";
 import { v4 as uuidv4 } from "uuid";
 
 interface FilePickerAcceptType {
@@ -493,7 +493,7 @@ class ProjectManager {
       name: project.name,
       lastOpened: Date.now(),
       fileHandle,
-      duration: project.timeline.duration,
+      duration: getEffectiveProjectDuration(project),
       trackCount: project.timeline.tracks.length,
     };
 

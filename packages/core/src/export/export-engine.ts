@@ -1,4 +1,4 @@
-import type { Project } from "../types/project";
+import { getEffectiveProjectDuration, type Project } from "../types/project";
 import type {
   VideoExportSettings,
   AudioExportSettings,
@@ -1009,7 +1009,7 @@ export class ExportEngine {
     project: Project,
     settings: VideoExportSettings | AudioExportSettings,
   ): number {
-    const duration = project.timeline.duration;
+    const duration = getEffectiveProjectDuration(project);
 
     if ("codec" in settings) {
       const videoBitrate = settings.bitrate * 1000;
@@ -1032,7 +1032,7 @@ export class ExportEngine {
     project: Project,
     settings: VideoExportSettings | AudioExportSettings,
   ): number {
-    const duration = project.timeline.duration;
+    const duration = getEffectiveProjectDuration(project);
 
     if ("codec" in settings) {
       const pixelCount = settings.width * settings.height;

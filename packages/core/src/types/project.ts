@@ -16,6 +16,13 @@ export interface ProjectSettings {
   readonly placeholderTextColor?: string;
   /** Font size of the placeholder text in canvas pixels. */
   readonly placeholderFontSize?: number;
+  /**
+   * Total play duration of the layout, in seconds.
+   * When set, takes precedence over the timeline's auto-computed duration
+   * (which is the max clip end time). Useful for signage layouts that are
+   * widget-only or that should loop/end at a fixed time regardless of clip lengths.
+   */
+  readonly playDuration?: number;
 }
 
 export interface Project {
@@ -69,3 +76,19 @@ export interface MediaMetadata {
   readonly channels: number; // For audio
   readonly fileSize: number;
 }
+
+/**
+ * Effective end-time for playback/export. Prefers the explicit
+ * `settings.playDuration` override (set in the Canvas inspector) over the
+ * auto-computed `timeline.duration` (max clip end time).
+ */
+export const getEffectiveProjectDuration = (project: {
+  readonly settings: ProjectSettings;
+  readonly timeline: Timeline;
+}): number => {
+  const override = project.settings.playDuration;
+  if (typeof override === "number" && Number.isFinite(override) && override > 0) {
+    return override;
+  }
+  return project.timeline.duration;
+};

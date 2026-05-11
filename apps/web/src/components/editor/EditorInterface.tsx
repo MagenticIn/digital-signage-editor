@@ -19,7 +19,9 @@ import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
 import {
   initializePlaybackBridge,
   disposePlaybackBridge,
+  getPlaybackBridge,
 } from "../../bridges/playback-bridge";
+import { useTimelineStore } from "../../stores/timeline-store";
 import {
   initializeMediaBridge,
   disposeMediaBridge,
@@ -170,7 +172,46 @@ export const EditorInterface: React.FC = () => {
 
   const { params } = useRouter();
   const isPreview = params.preview === "1";
+  const isFullscreen = params.fullscreen === "1";
   const layoutName = params.signageLayoutName ?? "Layout Preview";
+
+  // Autoplay + loop when entering full-screen preview.
+  useEffect(() => {
+    if (!isFullscreen) return;
+
+    const bridge = getPlaybackBridge();
+    let hasStartedOnce = false;
+    let loopTimer: number | null = null;
+
+    const startPlayback = () => {
+      bridge.seek(0).then(() => bridge.play());
+      hasStartedOnce = true;
+    };
+
+    // Defer slightly so the masterClock duration is in place (it's set by
+    // playback-controller on the first ProjectChanged event).
+    const initialTimer = window.setTimeout(startPlayback, 200);
+
+    // Subscribe to playbackState. Once we've started, transitioning to
+    // "stopped" means the master clock hit the layout end — loop back.
+    const unsub = useTimelineStore.subscribe(
+      (s) => s.playbackState,
+      (state) => {
+        if (!hasStartedOnce) return;
+        if (state === "stopped") {
+          if (loopTimer != null) window.clearTimeout(loopTimer);
+          loopTimer = window.setTimeout(startPlayback, 150);
+        }
+      },
+    );
+
+    return () => {
+      window.clearTimeout(initialTimer);
+      if (loopTimer != null) window.clearTimeout(loopTimer);
+      unsub();
+      bridge.pause();
+    };
+  }, [isFullscreen]);
 
   const {
     keyframeEditorOpen,
@@ -305,6 +346,17 @@ export const EditorInterface: React.FC = () => {
             <p className="text-red-500 text-xs mt-2">{initError}</p>
           )}
         </div>
+      </div>
+    );
+  }
+
+  // Full-screen playback: no chrome, just the Preview canvas filling the viewport.
+  if (isFullscreen) {
+    return (
+      <div className="w-screen h-screen bg-black overflow-hidden">
+        <PanelErrorBoundary name="Preview">
+          <Preview />
+        </PanelErrorBoundary>
       </div>
     );
   }

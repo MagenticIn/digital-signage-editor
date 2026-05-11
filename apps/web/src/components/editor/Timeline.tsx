@@ -156,6 +156,7 @@ export const Timeline: React.FC = () => {
     currentY: number;
   } | null>(null);
 
+  const playDurationOverride = project.settings.playDuration;
   const timelineDuration = useMemo(() => {
     let maxEnd = 0;
     for (const track of tracks) {
@@ -168,8 +169,11 @@ export const Timeline: React.FC = () => {
       const end = widget.startTime + widget.duration;
       if (end > maxEnd) maxEnd = end;
     }
-    return Math.max(maxEnd, 60); // Minimum 60 seconds
-  }, [tracks, widgets]);
+    // Floor: clip/widget extent, the user's explicit playDuration, or 10 s
+    // (never the hardcoded 60 s anymore). The override only raises the floor —
+    // longer clips still extend the ruler past it.
+    return Math.max(maxEnd, playDurationOverride ?? 0, 10);
+  }, [tracks, widgets, playDurationOverride]);
 
   const totalTracksHeight = useMemo(() => {
     let height = 0;
@@ -1087,6 +1091,7 @@ export const Timeline: React.FC = () => {
               style={{
                 width: `${timelineDuration * pixelsPerSecond}px`,
                 transform: `translateX(-${scrollX}px)`,
+                position: "relative",
               }}
             >
               <TimeRuler
@@ -1107,6 +1112,17 @@ export const Timeline: React.FC = () => {
                   bridge.endScrubbing();
                 }}
               />
+              {playDurationOverride !== undefined && playDurationOverride > 0 && (
+                <div
+                  className="absolute top-0 bottom-0 pointer-events-none"
+                  style={{
+                    left: `${playDurationOverride * pixelsPerSecond}px`,
+                    width: 0,
+                    borderLeft: "1px dashed rgba(34,197,94,0.8)",
+                  }}
+                  title={`Layout ends at ${playDurationOverride}s`}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -1265,9 +1281,19 @@ export const Timeline: React.FC = () => {
             }}
           >
             <div
-              style={{ width: `${timelineDuration * pixelsPerSecond}px` }}
+              style={{ width: `${timelineDuration * pixelsPerSecond}px`, position: "relative" }}
               className="min-w-full pb-72"
             >
+              {playDurationOverride !== undefined && playDurationOverride > 0 && (
+                <div
+                  className="absolute top-0 bottom-0 pointer-events-none z-10"
+                  style={{
+                    left: `${playDurationOverride * pixelsPerSecond}px`,
+                    width: 0,
+                    borderLeft: "1px dashed rgba(34,197,94,0.7)",
+                  }}
+                />
+              )}
               {visualOrderTracks.map((track) => (
                 <TrackLane
                   key={track.id}

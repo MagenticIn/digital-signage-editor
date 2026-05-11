@@ -19,7 +19,7 @@ import type {
   AudioConfig,
   AudioTrackConfig,
 } from "./animation-schema";
-import type { Project, MediaItem } from "../types/project";
+import { getEffectiveProjectDuration, type Project, type MediaItem } from "../types/project";
 import type { Clip, Keyframe, EasingType } from "../types/timeline";
 import type { TextClip } from "../text/types";
 import type { ShapeClip, ShapeType } from "../graphics/types";
@@ -58,7 +58,7 @@ export class AnimationExporter {
         width: project.settings.width,
         height: project.settings.height,
         fps: project.settings.frameRate,
-        duration: project.timeline.duration,
+        duration: getEffectiveProjectDuration(project),
         backgroundColor: "#000000",
       };
 

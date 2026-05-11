@@ -8,6 +8,7 @@ import {
   X,
   History,
   Download,
+  Eye,
   PanelsTopLeft,
   Save,
   Upload,
@@ -23,6 +24,7 @@ import { AgeruWordmark } from "../AgeruWordmark";
 import { HistoryPanel } from "./inspector/HistoryPanel";
 import { toast } from "../../stores/notification-store";
 import { saveSignageLayout, publishSignageLayout } from "../../services/signage-layouts-api";
+import { writePreviewSnapshot } from "../../services/preview-snapshot";
 import {
   Dialog,
   DialogContent,
@@ -66,16 +68,25 @@ export const Toolbar: React.FC = () => {
   const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
 
+  /**
+   * Snapshot used for both Download (full payload) and Preview (subset).
+   * Centralized so Preview is always replaying exactly what Download serializes.
+   */
+  const buildPreviewCorePayload = useCallback(() => ({
+    exportedAt: new Date().toISOString(),
+    project,
+    signageWidgets: useSignageWidgetStore.getState().widgets,
+  }), [project]);
+
   const handleDownloadEditorState = useCallback(() => {
     const timestamp = new Date()
       .toISOString()
       .replace(/\.\d{3}Z$/, "")
       .replace(/:/g, "-");
     const filename = `editor-state-${timestamp}.json`;
+    const corePayload = buildPreviewCorePayload();
     const payload = {
-      exportedAt: new Date().toISOString(),
-      project,
-      signageWidgets: useSignageWidgetStore.getState().widgets,
+      ...corePayload,
       timeline: {
         playheadPosition: useTimelineStore.getState().playheadPosition,
         playbackState: useTimelineStore.getState().playbackState,
@@ -99,7 +110,15 @@ export const Toolbar: React.FC = () => {
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
     toast.success("Editor state downloaded", filename);
-  }, [project]);
+  }, [buildPreviewCorePayload]);
+
+  const handleOpenPreview = useCallback(() => {
+    writePreviewSnapshot(buildPreviewCorePayload());
+    // The router parses params from the hash (#/route?key=val), not the URL query.
+    const url = new URL(window.location.href);
+    url.hash = "#/editor?fullscreen=1";
+    window.open(url.toString(), "_blank", "noopener,noreferrer");
+  }, [buildPreviewCorePayload]);
 
   const returnUrl = params.returnUrl?.trim() || "";
   const isIntegratedSession = Boolean(returnUrl);
@@ -305,6 +324,20 @@ export const Toolbar: React.FC = () => {
       ) : null}
 
       <div className="flex items-center gap-4">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={handleOpenPreview}
+              className="p-2 rounded-lg hover:bg-background-elevated text-text-secondary hover:text-text-primary transition-colors"
+            >
+              <Eye size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Open full-screen preview in a new tab</p>
+          </TooltipContent>
+        </Tooltip>
+
         <Tooltip>
           <TooltipTrigger asChild>
             <button
