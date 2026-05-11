@@ -18,13 +18,19 @@ import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useThemeStore } from "../../stores/theme-store";
 import { useTimelineStore } from "../../stores/timeline-store";
-import { useSignageWidgetStore } from "../../stores/signage-widget-store";
+import { useSignageWidgetStore, migrateWidget } from "../../stores/signage-widget-store";
 import { useRouter } from "../../hooks/use-router";
 import { AgeruWordmark } from "../AgeruWordmark";
 import { HistoryPanel } from "./inspector/HistoryPanel";
 import { toast } from "../../stores/notification-store";
 import { saveSignageLayout, publishSignageLayout } from "../../services/signage-layouts-api";
 import { writePreviewSnapshot } from "../../services/preview-snapshot";
+import {
+  openPreviewChannel,
+  type PreviewSnapshotMessage,
+  type PreviewSyncMessage,
+} from "../../services/preview-sync";
+import { getEffectiveProjectDuration } from "@openreel/core";
 import {
   Dialog,
   DialogContent,
@@ -69,14 +75,50 @@ export const Toolbar: React.FC = () => {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
 
   /**
-   * Snapshot used for both Download (full payload) and Preview (subset).
+   * Snapshot used for both Download (full payload) and Preview (live channel).
    * Centralized so Preview is always replaying exactly what Download serializes.
+   *
+   * - Settings are normalized: every optional ProjectSettings field is
+   *   emitted with its effective value (so the payload is self-contained).
+   * - Widgets are migrated so every config field is present (legacy widgets
+   *   get their newer fields back-filled with defaults).
+   * - `effectiveDuration` is exposed explicitly for the replayer.
    */
-  const buildPreviewCorePayload = useCallback(() => ({
-    exportedAt: new Date().toISOString(),
-    project,
-    signageWidgets: useSignageWidgetStore.getState().widgets,
-  }), [project]);
+  const buildPreviewCorePayload = useCallback(() => {
+    const rawWidgets = useSignageWidgetStore.getState().widgets;
+    const signageWidgets = rawWidgets.map(migrateWidget);
+    const autoDuration = getEffectiveProjectDuration(project);
+    const widgetMaxEnd = signageWidgets.reduce(
+      (m, w) => Math.max(m, w.startTime + w.duration),
+      0,
+    );
+    const effectiveDuration = Math.max(autoDuration, widgetMaxEnd, 0);
+
+    const normalizedProject = {
+      ...project,
+      settings: {
+        ...project.settings,
+        backgroundColor: project.settings.backgroundColor ?? "rgba(0,0,0,1)",
+        playDuration: project.settings.playDuration ?? effectiveDuration,
+        placeholderText:
+          project.settings.placeholderText ?? "Import media to get started",
+        placeholderTextColor:
+          project.settings.placeholderTextColor ?? "rgba(161,161,170,1)",
+        placeholderFontSize: project.settings.placeholderFontSize ?? 24,
+      },
+      timeline: {
+        ...project.timeline,
+        duration: Math.max(project.timeline.duration, widgetMaxEnd),
+      },
+    };
+
+    return {
+      exportedAt: new Date().toISOString(),
+      project: normalizedProject,
+      signageWidgets,
+      effectiveDuration,
+    };
+  }, [project]);
 
   const handleDownloadEditorState = useCallback(() => {
     const timestamp = new Date()
@@ -118,6 +160,56 @@ export const Toolbar: React.FC = () => {
     const url = new URL(window.location.href);
     url.hash = "#/editor?fullscreen=1";
     window.open(url.toString(), "_blank", "noopener,noreferrer");
+  }, [buildPreviewCorePayload]);
+
+  // Live broadcast: any time the editor's project or widgets change, push the
+  // normalized snapshot to all open Preview tabs over a BroadcastChannel. Also
+  // respond to "request-snapshot" pings (preview tab reload).
+  React.useEffect(() => {
+    const channel = openPreviewChannel();
+    if (!channel) return;
+
+    let debounce: number | null = null;
+    const broadcast = () => {
+      if (debounce != null) window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        const payload = buildPreviewCorePayload();
+        const msg: PreviewSnapshotMessage = {
+          type: "snapshot",
+          project: payload.project,
+          signageWidgets: payload.signageWidgets,
+          effectiveDuration: payload.effectiveDuration,
+          ts: Date.now(),
+        };
+        try { channel.postMessage(msg); } catch { /* ignore */ }
+      }, 200);
+    };
+
+    // Broadcast whenever the project store or widget store changes.
+    // `useProjectStore` has subscribeWithSelector middleware so we can target
+    // the `.project` slice; the widget store is plain Zustand and we just
+    // broadcast on any state change (only `widgets` lives there anyway).
+    const unsubProject = useProjectStore.subscribe(
+      (state) => state.project,
+      () => broadcast(),
+    );
+    const unsubWidgets = useSignageWidgetStore.subscribe(() => broadcast());
+
+    const onMessage = (event: MessageEvent<PreviewSyncMessage>) => {
+      if (event.data?.type === "request-snapshot") broadcast();
+    };
+    channel.addEventListener("message", onMessage);
+
+    // Initial push so a preview tab opened before this effect mounted sees data.
+    broadcast();
+
+    return () => {
+      if (debounce != null) window.clearTimeout(debounce);
+      channel.removeEventListener("message", onMessage);
+      unsubProject();
+      unsubWidgets();
+      channel.close();
+    };
   }, [buildPreviewCorePayload]);
 
   const returnUrl = params.returnUrl?.trim() || "";

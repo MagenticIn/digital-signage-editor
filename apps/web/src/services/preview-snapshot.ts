@@ -7,6 +7,8 @@ export interface PreviewSnapshot {
   exportedAt: string;
   project: Project;
   signageWidgets: SignageWidget[];
+  /** max(clip ends, widget ends, settings.playDuration, 0) — what the replayer should use as the layout play time. */
+  effectiveDuration: number;
 }
 
 export const writePreviewSnapshot = (snapshot: PreviewSnapshot): void => {

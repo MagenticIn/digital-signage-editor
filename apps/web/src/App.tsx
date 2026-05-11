@@ -28,6 +28,11 @@ import { setSignageAuth, getSignageLayout, isSignageLayoutsConnected } from "./s
 import { useSignageMediaStore } from "./stores/signage-media-store";
 import { readPreviewSnapshot } from "./services/preview-snapshot";
 import { useSignageWidgetStore } from "./stores/signage-widget-store";
+import {
+  openPreviewChannel,
+  type PreviewSnapshotMessage,
+  type PreviewSyncMessage,
+} from "./services/preview-sync";
 
 const EditorInterface = lazy(() =>
   import("./components/editor/EditorInterface").then((m) => ({
@@ -55,9 +60,14 @@ function App() {
   const { openModal: openSearchModal } = useUIStore();
   const createNewProject = useProjectStore((state) => state.createNewProject);
   const loadProject = useProjectStore((state) => state.loadProject);
-  const { showDialog, availableSaves, recover, dismiss, clearAll } = useProjectRecovery();
 
   const { route, params, navigate, parsedDimensions, fps } = useRouter();
+  // Detect fullscreen preview as early as possible — disables the recovery
+  // dialog and gates the boot-time hydration effect.
+  const isFullscreenPreview = params.fullscreen === "1";
+  const { showDialog, availableSaves, recover, dismiss, clearAll } = useProjectRecovery({
+    enabled: !isFullscreenPreview,
+  });
   const hasHandledInitialRoute = useRef(false);
   const signageLayoutLoadedRef = useRef(false);
 
@@ -67,32 +77,69 @@ function App() {
 
   // Fullscreen preview state — populated by reading the sessionStorage snapshot
   // when the URL contains `?fullscreen=1`.
-  const isFullscreenPreview = params.fullscreen === "1";
   const [fullscreenHydrated, setFullscreenHydrated] = useState(false);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const fullscreenHydrationRef = useRef(false);
 
   useEffect(() => {
     if (!isFullscreenPreview) return;
-    if (fullscreenHydrationRef.current) return;
-    fullscreenHydrationRef.current = true;
 
-    const snapshot = readPreviewSnapshot();
-    if (!snapshot) {
-      setFullscreenError("No preview data found. Open this from the editor's Preview button.");
+    const hydrate = (
+      project: PreviewSnapshotMessage["project"],
+      signageWidgets: PreviewSnapshotMessage["signageWidgets"],
+    ) => {
+      try {
+        loadProject(project);
+        useSignageWidgetStore.setState({ widgets: signageWidgets });
+        const { setPanelVisible } = useUIStore.getState();
+        setPanelVisible("mediaLibrary", false);
+        setPanelVisible("inspector", false);
+        setPanelVisible("timeline", false);
+        setFullscreenError(null);
+        setFullscreenHydrated(true);
+      } catch (err) {
+        setFullscreenError(err instanceof Error ? err.message : "Failed to load preview snapshot.");
+      }
+    };
+
+    // First frame: hydrate from sessionStorage if present.
+    if (!fullscreenHydrationRef.current) {
+      fullscreenHydrationRef.current = true;
+      const snapshot = readPreviewSnapshot();
+      if (snapshot) {
+        hydrate(snapshot.project, snapshot.signageWidgets);
+      } else {
+        // No seed — wait for the editor's BroadcastChannel response.
+      }
+    }
+
+    // Real-time sync via BroadcastChannel. The editor tab subscribes to its
+    // stores and broadcasts; we hydrate on every "snapshot" message.
+    const channel = openPreviewChannel();
+    if (!channel) {
+      // BroadcastChannel unsupported — fall back to a sessionStorage-only one-shot.
+      if (!fullscreenHydrationRef.current) {
+        setFullscreenError("No preview data found. Open this from the editor's Preview button.");
+      }
       return;
     }
-    try {
-      loadProject(snapshot.project);
-      useSignageWidgetStore.setState({ widgets: snapshot.signageWidgets });
-      const { setPanelVisible } = useUIStore.getState();
-      setPanelVisible("mediaLibrary", false);
-      setPanelVisible("inspector", false);
-      setPanelVisible("timeline", false);
-      setFullscreenHydrated(true);
-    } catch (err) {
-      setFullscreenError(err instanceof Error ? err.message : "Failed to load preview snapshot.");
-    }
+
+    const onMessage = (event: MessageEvent<PreviewSyncMessage>) => {
+      const msg = event.data;
+      if (msg?.type !== "snapshot") return;
+      hydrate(msg.project, msg.signageWidgets);
+    };
+    channel.addEventListener("message", onMessage);
+
+    // Ask the editor tab to push its current state (covers preview-tab reload
+    // and the sessionStorage-missing case).
+    try { channel.postMessage({ type: "request-snapshot" } satisfies PreviewSyncMessage); }
+    catch { /* ignore */ }
+
+    return () => {
+      channel.removeEventListener("message", onMessage);
+      channel.close();
+    };
   }, [isFullscreenPreview, loadProject]);
 
 
@@ -333,7 +380,7 @@ function App() {
           onClose={closeModal}
         />
         <SearchModal isOpen={activeModal === "search"} onClose={closeModal} />
-        {showDialog && availableSaves.length > 0 && (
+        {!isFullscreenPreview && showDialog && availableSaves.length > 0 && (
           <RecoveryDialog
             saves={availableSaves}
             onRecover={async (saveId) => {

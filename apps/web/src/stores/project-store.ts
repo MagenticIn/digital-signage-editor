@@ -101,6 +101,13 @@ export interface ProjectState {
   loadProject: (project: Project) => void;
   renameProject: (name: string) => Promise<ActionResult>;
   updateSettings: (settings: Partial<ProjectSettings>) => Promise<ActionResult>;
+  /**
+   * Directly mutate `project.timeline.duration` without going through the
+   * action pipeline. Used by the signage widget store to keep the persisted
+   * duration in sync with widget extents (widgets live outside the action
+   * executor's purview).
+   */
+  setTimelineDuration: (duration: number) => void;
 
   // Media library actions
   importMedia: (file: File, sourceUrl?: string) => Promise<ActionResult>;
@@ -551,6 +558,18 @@ export const useProjectStore = create<ProjectState>()(
           set({ project: { ...project } });
         }
         return result;
+      },
+
+      setTimelineDuration: (duration: number) => {
+        const { project } = get();
+        const clean = Number.isFinite(duration) && duration > 0 ? duration : 0;
+        if (project.timeline.duration === clean) return;
+        const nextProject = {
+          ...project,
+          timeline: { ...project.timeline, duration: clean },
+          modifiedAt: Date.now(),
+        };
+        set({ project: nextProject });
       },
 
       // Update project settings

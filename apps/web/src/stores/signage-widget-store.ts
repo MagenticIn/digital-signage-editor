@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { normalizeColor } from "../components/editor/widgets/color-utils";
+import { useProjectStore } from "./project-store";
 import type {
   AudioWidgetConfig,
   CalendarConfig,
@@ -488,22 +489,55 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
 
 export const migrateWidgets = (raw: SignageWidget[]): SignageWidget[] => raw.map(migrateWidget);
 
+/**
+ * Recompute `project.timeline.duration` to the max of clip extents + widget
+ * extents. Widgets live outside the action-executor's recalc; this is how we
+ * keep the persisted duration field "linked" to widget add/move/resize.
+ */
+const recomputeProjectDuration = (widgets: SignageWidget[]) => {
+  const { project, setTimelineDuration } = useProjectStore.getState();
+  let maxEnd = 0;
+  for (const track of project.timeline.tracks) {
+    for (const clip of track.clips) {
+      const end = clip.startTime + clip.duration;
+      if (end > maxEnd) maxEnd = end;
+    }
+  }
+  for (const widget of widgets) {
+    const end = widget.startTime + widget.duration;
+    if (end > maxEnd) maxEnd = end;
+  }
+  setTimelineDuration(maxEnd);
+};
+
 export const useSignageWidgetStore = create<SignageWidgetState>((set) => ({
   widgets: [],
   addWidget: (widget) =>
-    set((state) => ({ widgets: [...state.widgets, migrateWidget(widget)] })),
+    set((state) => {
+      const widgets = [...state.widgets, migrateWidget(widget)];
+      recomputeProjectDuration(widgets);
+      return { widgets };
+    }),
   removeWidget: (id) =>
-    set((state) => ({ widgets: state.widgets.filter((widget) => widget.id !== id) })),
+    set((state) => {
+      const widgets = state.widgets.filter((widget) => widget.id !== id);
+      recomputeProjectDuration(widgets);
+      return { widgets };
+    }),
   updateWidget: (id, updates) =>
-    set((state) => ({
-      widgets: state.widgets.map((widget) =>
+    set((state) => {
+      const widgets = state.widgets.map((widget) =>
         widget.id === id ? { ...widget, ...updates } : widget,
-      ),
-    })),
+      );
+      recomputeProjectDuration(widgets);
+      return { widgets };
+    }),
   updateWidgetConfig: (id, config) =>
-    set((state) => ({
-      widgets: state.widgets.map((widget) =>
+    set((state) => {
+      const widgets = state.widgets.map((widget) =>
         widget.id === id ? { ...widget, config } : widget,
-      ),
-    })),
+      );
+      recomputeProjectDuration(widgets);
+      return { widgets };
+    }),
 }));

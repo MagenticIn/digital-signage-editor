@@ -23,6 +23,10 @@ import {
 } from "../../bridges/playback-bridge";
 import { useTimelineStore } from "../../stores/timeline-store";
 import {
+  openPreviewChannel,
+  type PreviewSyncMessage,
+} from "../../services/preview-sync";
+import {
   initializeMediaBridge,
   disposeMediaBridge,
 } from "../../bridges/media-bridge";
@@ -176,6 +180,8 @@ export const EditorInterface: React.FC = () => {
   const layoutName = params.signageLayoutName ?? "Layout Preview";
 
   // Autoplay + loop when entering full-screen preview.
+  // Also seek-to-0 + restart on every broadcast snapshot from the editor tab,
+  // so live edits play immediately from the top.
   useEffect(() => {
     if (!isFullscreen) return;
 
@@ -205,10 +211,24 @@ export const EditorInterface: React.FC = () => {
       },
     );
 
+    // Live updates from the editor: every snapshot restarts playback at 0 so
+    // the preview always shows the latest edit from the top.
+    const channel = openPreviewChannel();
+    const onMessage = (event: MessageEvent<PreviewSyncMessage>) => {
+      if (event.data?.type !== "snapshot") return;
+      // Stores are re-hydrated by App.tsx's effect; here we just resync playback.
+      window.setTimeout(startPlayback, 100);
+    };
+    channel?.addEventListener("message", onMessage);
+
     return () => {
       window.clearTimeout(initialTimer);
       if (loopTimer != null) window.clearTimeout(loopTimer);
       unsub();
+      if (channel) {
+        channel.removeEventListener("message", onMessage);
+        channel.close();
+      }
       bridge.pause();
     };
   }, [isFullscreen]);
