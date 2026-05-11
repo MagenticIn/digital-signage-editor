@@ -193,7 +193,7 @@ export const defaultConfigs: DefaultConfigs = {
     text: "Welcome to Digital Signage",
     entries: [],
     speed: 50,
-    backgroundColor: "rgba(0,0,0,0)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     textColor: "rgba(255,255,255,1)",
     fontFamily: "Inter",
     fontSize: 24,

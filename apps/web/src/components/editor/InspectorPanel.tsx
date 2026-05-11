@@ -105,27 +105,36 @@ const Section: React.FC<{
 
 const EmptyState: React.FC = () => <CanvasSettings />;
 
+interface ResolutionPreset {
+  readonly id: string;
+  readonly label: string;
+  readonly resolution: string;
+  readonly width: number;
+  readonly height: number;
+  readonly orientation: "LANDSCAPE" | "PORTRAIT";
+}
+
+const LAYOUT_RESOLUTION_PRESETS: ResolutionPreset[] = [
+  { id: "1080p-landscape", label: "1080p HD Landscape", resolution: "1920x1080", width: 1920, height: 1080, orientation: "LANDSCAPE" },
+  { id: "1080p-portrait", label: "1080p HD Portrait", resolution: "1080x1920", width: 1080, height: 1920, orientation: "PORTRAIT" },
+  { id: "4k-cinema", label: "4K cinema", resolution: "4096x2304", width: 4096, height: 2304, orientation: "LANDSCAPE" },
+  { id: "4k-uhd-landscape", label: "4K UHD Landscape", resolution: "3840x2160", width: 3840, height: 2160, orientation: "LANDSCAPE" },
+  { id: "4k-uhd-portrait", label: "4K UHD Portrait", resolution: "2160x3840", width: 2160, height: 3840, orientation: "PORTRAIT" },
+  { id: "720p-landscape", label: "720p HD Landscape", resolution: "1280x720", width: 1280, height: 720, orientation: "LANDSCAPE" },
+  { id: "720p-portrait", label: "720p HD Portrait", resolution: "720x1280", width: 720, height: 1280, orientation: "PORTRAIT" },
+  { id: "banner", label: "Banner", resolution: "1080x320", width: 1080, height: 320, orientation: "LANDSCAPE" },
+  { id: "pc-monitor-4-3", label: "Common PC Monitor 4:3", resolution: "1024x768", width: 1024, height: 768, orientation: "LANDSCAPE" },
+];
+
 const CanvasSettings: React.FC = () => {
   const project = useProjectStore((state) => state.project);
   const updateSettings = useProjectStore((state) => state.updateSettings);
 
   const settings = project?.settings;
-  const [widthInput, setWidthInput] = React.useState<string>(
-    settings ? String(settings.width) : "",
-  );
-  const [heightInput, setHeightInput] = React.useState<string>(
-    settings ? String(settings.height) : "",
-  );
   const [placeholderFontSizeInput, setPlaceholderFontSizeInput] = React.useState<string>(
     settings?.placeholderFontSize !== undefined ? String(settings.placeholderFontSize) : "24",
   );
 
-  React.useEffect(() => {
-    if (settings) setWidthInput(String(settings.width));
-  }, [settings?.width]);
-  React.useEffect(() => {
-    if (settings) setHeightInput(String(settings.height));
-  }, [settings?.height]);
   React.useEffect(() => {
     if (settings) setPlaceholderFontSizeInput(String(settings.placeholderFontSize ?? 24));
   }, [settings?.placeholderFontSize]);
@@ -142,22 +151,16 @@ const CanvasSettings: React.FC = () => {
   const placeholderText = settings.placeholderText ?? "Import media to get started";
   const placeholderColor = settings.placeholderTextColor ?? "rgba(161,161,170,1)";
 
-  const commitWidth = () => {
-    const parsed = Number(widthInput);
-    if (!Number.isFinite(parsed) || parsed < 32) {
-      setWidthInput(String(settings.width));
-      return;
-    }
-    if (parsed !== settings.width) void updateSettings({ width: parsed });
+  const matchedPreset = LAYOUT_RESOLUTION_PRESETS.find(
+    (p) => p.width === settings.width && p.height === settings.height,
+  );
+
+  const handleResolutionChange = (id: string) => {
+    const preset = LAYOUT_RESOLUTION_PRESETS.find((p) => p.id === id);
+    if (!preset) return;
+    void updateSettings({ width: preset.width, height: preset.height });
   };
-  const commitHeight = () => {
-    const parsed = Number(heightInput);
-    if (!Number.isFinite(parsed) || parsed < 32) {
-      setHeightInput(String(settings.height));
-      return;
-    }
-    if (parsed !== settings.height) void updateSettings({ height: parsed });
-  };
+
   const commitPlaceholderFontSize = () => {
     const parsed = Number(placeholderFontSizeInput);
     const current = settings.placeholderFontSize ?? 24;
@@ -172,50 +175,30 @@ const CanvasSettings: React.FC = () => {
     <div className="p-4 space-y-3">
       <div className="text-[10px] uppercase tracking-wider text-text-muted">Canvas</div>
       <div className="rounded-lg border border-border p-3 bg-background-tertiary space-y-2">
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-[10px] text-text-secondary block mb-1">Width</label>
-            <input
-              type="number"
-              min={32}
-              className="w-full bg-background border border-border rounded px-2 py-1 text-xs"
-              value={widthInput}
-              onChange={(e) => setWidthInput(e.target.value)}
-              onBlur={commitWidth}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  commitWidth();
-                  (e.target as HTMLInputElement).blur();
-                }
-              }}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-text-secondary block mb-1">Height</label>
-            <input
-              type="number"
-              min={32}
-              className="w-full bg-background border border-border rounded px-2 py-1 text-xs"
-              value={heightInput}
-              onChange={(e) => setHeightInput(e.target.value)}
-              onBlur={commitHeight}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  commitHeight();
-                  (e.target as HTMLInputElement).blur();
-                }
-              }}
-            />
-          </div>
+        <div>
+          <label className="text-[10px] text-text-secondary block mb-1">Resolution</label>
+          <select
+            className="w-full bg-background border border-border rounded px-2 py-1 text-xs"
+            value={matchedPreset?.id ?? ""}
+            onChange={(e) => handleResolutionChange(e.target.value)}
+          >
+            {!matchedPreset && (
+              <option value="" disabled>
+                Custom ({settings.width} × {settings.height})
+              </option>
+            )}
+            {LAYOUT_RESOLUTION_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label} — {p.resolution}
+              </option>
+            ))}
+          </select>
         </div>
         <ColorOpacityInput
           label="Background color"
           value={bg}
           onChange={(rgba) => void updateSettings({ backgroundColor: rgba })}
         />
-        <p className="text-[10px] text-text-muted">
-          Press Enter or click away to apply width / height. Values below 32 revert.
-        </p>
       </div>
 
       <div className="text-[10px] uppercase tracking-wider text-text-muted">Placeholder</div>
@@ -339,6 +322,10 @@ export const InspectorPanel: React.FC = () => {
   const selectedClipIds = getSelectedClipIds();
   const getTitleEngine = useEngineStore((state) => state.getTitleEngine);
   const getGraphicsEngine = useEngineStore((state) => state.getGraphicsEngine);
+
+  // Inspector view mode — lets the user edit canvas settings without
+  // having to clear their current widget/clip selection.
+  const [viewMode, setViewMode] = useState<"selection" | "canvas">("selection");
 
   // Transcription state
   const [transcriptionProgress, setTranscriptionProgress] =
@@ -765,7 +752,7 @@ export const InspectorPanel: React.FC = () => {
       style={{ width: inspectorWidth }}
     >
       <div className="p-5">
-        <div className="flex items-center justify-between gap-2 mb-5">
+        <div className="flex items-center justify-between gap-2 mb-3">
           <h3 className="text-sm font-bold text-text-primary tracking-tight">
             Inspector
           </h3>
@@ -779,7 +766,26 @@ export const InspectorPanel: React.FC = () => {
           </button>
         </div>
 
-        {selectedWidget ? (
+        <div className="flex gap-1 mb-5 bg-background-tertiary border border-border rounded-lg p-0.5">
+          {(["selection", "canvas"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setViewMode(mode)}
+              className={`flex-1 text-[11px] py-1.5 rounded-md transition-colors ${
+                viewMode === mode
+                  ? "bg-background-elevated text-text-primary"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              {mode === "selection" ? "Selection" : "Canvas"}
+            </button>
+          ))}
+        </div>
+
+        {viewMode === "canvas" ? (
+          <CanvasSettings />
+        ) : selectedWidget ? (
           <WidgetInspector widget={selectedWidget} />
         ) : selectedClip ? (
           <>

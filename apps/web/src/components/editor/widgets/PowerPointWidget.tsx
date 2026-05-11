@@ -97,7 +97,22 @@ export const PowerPointWidget: React.FC<PowerPointWidgetProps> = ({
   if (error) {
     return <div className="text-red-200 bg-red-900/70 px-3 py-1 rounded">{error}</div>;
   }
-  if (!pageImage) return null;
+  if (!config.file && !config.fileUrl) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center text-xs text-white/70 bg-black/30 gap-1 px-3 text-center">
+        <span className="text-2xl">📑</span>
+        <span>PowerPoint widget</span>
+        <span className="text-[10px] text-white/50">Upload a .pptx file in the inspector</span>
+      </div>
+    );
+  }
+  if (!pageImage) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-xs text-white/70 bg-black/30">
+        Converting slides…
+      </div>
+    );
+  }
 
   const totalSlides = config.totalSlides || pdfDoc?.numPages || 0;
   const imgClass =

@@ -4885,7 +4885,7 @@ export const Preview: React.FC = () => {
     (
       widget: (typeof activeWidgets)[number],
       widgetTime: number,
-      selected: boolean = false,
+      _selected: boolean = false,
     ) => {
       if (widget.type === "image") {
         const config = widget.config as ImageWidgetConfig;
@@ -4932,9 +4932,20 @@ export const Preview: React.FC = () => {
       if (widget.type === "audio") {
         const config = widget.config as AudioWidgetConfig;
         return (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-white px-3">
-            {config.title && <div className="text-sm font-semibold">{config.title}</div>}
-            <audio src={config.audioUrl} autoPlay loop controls className="w-full max-w-[320px]" />
+          <div className="relative w-full h-full flex flex-col items-center justify-center gap-2 text-white px-3 bg-black/40">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <span>🎵</span>
+              <span>{config.title || "Audio"}</span>
+            </div>
+            {config.audioUrl ? (
+              <div className="text-[10px] text-white/60 truncate max-w-full">
+                {config.audioUrl}
+              </div>
+            ) : (
+              <div className="text-[10px] text-white/50">No source</div>
+            )}
+            <audio src={config.audioUrl} autoPlay loop className="hidden" />
+            <div className="absolute inset-0 z-10" aria-hidden />
           </div>
         );
       }
@@ -4946,15 +4957,16 @@ export const Preview: React.FC = () => {
       }
       if (widget.type === "ticker") {
         const config = widget.config as TickerConfig;
-        const displayText =
+        const rawText =
           config.mode === "list" ? config.entries.join("   •   ") : config.text;
+        const displayText = rawText && rawText.trim().length > 0 ? rawText : " ";
         return <TickerWidget config={{ ...config, text: displayText }} />;
       }
       if (widget.type === "pdf") {
         return <PDFWidget config={widget.config as PDFConfig} currentTime={widgetTime} />;
       }
       if (widget.type === "iframe") {
-        return <IframeWidget config={widget.config as IframeConfig} interactive={selected} />;
+        return <IframeWidget config={widget.config as IframeConfig} interactive={false} />;
       }
       if (widget.type === "powerpoint") {
         return (
@@ -5143,7 +5155,7 @@ export const Preview: React.FC = () => {
               className="w-full h-full border-0"
               sandbox="allow-scripts allow-same-origin"
             />
-            {!selected && <div className="absolute inset-0 z-10" aria-hidden />}
+            <div className="absolute inset-0 z-10" aria-hidden />
           </div>
         );
       }
@@ -5298,7 +5310,7 @@ export const Preview: React.FC = () => {
                           transformOrigin: "center center",
                         }}
                       >
-                        {renderWidgetContent(widget, widgetTime)}
+                        {renderWidgetContent(widget, widgetTime, selected)}
                       </div>
                     </div>
                   )}

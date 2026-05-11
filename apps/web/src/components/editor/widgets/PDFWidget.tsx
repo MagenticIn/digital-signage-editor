@@ -66,7 +66,22 @@ export const PDFWidget: React.FC<PDFWidgetProps> = ({ config, currentTime }) => 
     };
   }, [pdfDoc, pageIndex]);
 
-  if (!pageImage) return null;
+  if (!config.file && !config.fileUrl) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center text-xs text-white/70 bg-black/30 gap-1 px-3 text-center">
+        <span className="text-2xl">📄</span>
+        <span>PDF widget</span>
+        <span className="text-[10px] text-white/50">Upload a file or paste a URL in the inspector</span>
+      </div>
+    );
+  }
+  if (!pageImage) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-xs text-white/70 bg-black/30">
+        Loading PDF…
+      </div>
+    );
+  }
 
   const totalPages = config.totalPages || pdfDoc?.numPages || 0;
   const imgClass =

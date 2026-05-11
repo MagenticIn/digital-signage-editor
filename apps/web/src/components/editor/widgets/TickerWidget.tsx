@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from "react";
-import Marquee from "react-fast-marquee";
+import React, { useEffect, useMemo, useState } from "react";
 import type { TickerConfig } from "../../../types/widgets";
 
 interface TickerWidgetProps {
@@ -36,9 +35,18 @@ export const TickerWidget: React.FC<TickerWidgetProps> = ({ config }) => {
     };
   }, [config.dataSource, config.refreshInterval]);
 
+  const displayText = text && text.trim().length > 0 ? text : "Ticker";
+
+  // Scroll duration scales inversely with `speed`. speed=50 → ~20s for a full loop.
+  const duration = useMemo(() => {
+    const safeSpeed = Math.max(1, config.speed || 50);
+    const charCount = Math.max(20, displayText.length);
+    return `${Math.max(6, (charCount * 1000) / (safeSpeed * 6))}s`;
+  }, [config.speed, displayText.length]);
+
   return (
     <div
-      className="w-full h-full flex items-center justify-center overflow-hidden"
+      className="w-full h-full flex items-center overflow-hidden relative"
       style={{
         backgroundColor: config.backgroundColor,
         color: config.textColor,
@@ -46,14 +54,27 @@ export const TickerWidget: React.FC<TickerWidgetProps> = ({ config }) => {
         fontSize: config.fontSize,
       }}
     >
-      <Marquee speed={config.speed} gradient={false} style={{ width: "100%" }}>
-        <span
-          className="px-4 py-2"
-          style={{ paddingRight: "100px", whiteSpace: "nowrap", display: "inline-block" }}
-        >
-          {text}
+      <div
+        className="whitespace-nowrap"
+        style={{
+          display: "inline-block",
+          paddingLeft: "100%",
+          animation: `ticker-scroll ${duration} linear infinite`,
+        }}
+      >
+        <span style={{ paddingRight: "4em", display: "inline-block" }}>
+          {displayText}
         </span>
-      </Marquee>
+        <span style={{ paddingRight: "4em", display: "inline-block" }}>
+          {displayText}
+        </span>
+      </div>
+      <style>{`
+        @keyframes ticker-scroll {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-50%); }
+        }
+      `}</style>
     </div>
   );
 };

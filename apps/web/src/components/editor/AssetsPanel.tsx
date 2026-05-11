@@ -940,7 +940,7 @@ export const AssetsPanel: React.FC = () => {
     (type: SignageWidgetType) => {
       let layout = { x: 40, y: 40, width: 360, height: 220 };
       if (type === "ticker") {
-        layout = { x: 40, y: 440, width: 800, height: 60 };
+        layout = { x: 0, y: 0, width: 1920, height: 96 };
       }
 
       addWidget({
