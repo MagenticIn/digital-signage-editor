@@ -484,13 +484,6 @@ export const useProjectStore = create<ProjectState>()(
         const newHistory = new ActionHistory();
         const newExecutor = new ActionExecutor(newHistory);
 
-        // Fix legacy projects where timeline.duration was never persisted
-        const computedDuration = project.timeline.tracks.reduce((max, track) =>
-          track.clips.reduce((m, c) => Math.max(m, c.startTime + c.duration), max), 0);
-        const fixedProject = computedDuration > 0 && project.timeline.duration === 0
-          ? { ...project, timeline: { ...project.timeline, duration: computedDuration } }
-          : project;
-
         // Hydrate signage widgets persisted on the layout. migrateWidgets
         // back-fills legacy widget types/configs, so older layouts upgrade here.
         // Keep project.signageWidgets pointing at the migrated array so it stays
@@ -498,6 +491,21 @@ export const useProjectStore = create<ProjectState>()(
         const migratedWidgets = migrateWidgets(
           (project.signageWidgets ?? []) as SignageWidget[],
         );
+
+        // Fix legacy projects where timeline.duration was never persisted —
+        // include widget extents so a widget-only layout doesn't load with 0 s.
+        let computedDuration = 0;
+        for (const track of project.timeline.tracks) {
+          for (const c of track.clips) {
+            computedDuration = Math.max(computedDuration, c.startTime + c.duration);
+          }
+        }
+        for (const w of migratedWidgets) {
+          computedDuration = Math.max(computedDuration, w.startTime + w.duration);
+        }
+        const fixedProject = computedDuration > 0 && project.timeline.duration === 0
+          ? { ...project, timeline: { ...project.timeline, duration: computedDuration } }
+          : project;
 
         set({
           project: { ...fixedProject, signageWidgets: migratedWidgets },

@@ -201,6 +201,17 @@ export const Timeline: React.FC = () => {
     powerpoint: { labelBg: "#5c4433", blockBg: "#7a5c44", text: "#ffece6" },
     ticker: { labelBg: "#335c66", blockBg: "#447a8a", text: "#e6f7ff" },
   };
+  const widgetLabelMap: Partial<Record<SignageWidgetType, string>> = {
+    htmlPackage: "HTML",
+    videoIn: "Video In",
+    datasetView: "Dataset",
+    shellCommand: "Shell",
+    iframe: "Embed",
+    hls: "HLS Stream",
+    pdf: "PDF",
+  };
+  const widgetDisplayName = (type: SignageWidgetType) =>
+    widgetLabelMap[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
 
   const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
   const [dragOffsetSeconds, setDragOffsetSeconds] = useState(0);
@@ -1145,22 +1156,24 @@ export const Timeline: React.FC = () => {
                   </div>
                 );
               })}
-              {widgets.map((widget) => (
-                <div
-                  key={widget.id}
-                  className="h-14 px-2 border-b border-border/60 flex items-center bg-background-secondary/30"
-                >
+              {widgets.map((widget) => {
+                const color = widgetColorMap[widget.type] ?? defaultWidgetColor;
+                return (
                   <div
-                    className="w-full rounded-md px-2 py-1 text-[10px] font-medium uppercase tracking-wide shadow-sm"
-                    style={{
-                      backgroundColor: (widgetColorMap[widget.type] ?? defaultWidgetColor).labelBg,
-                      color: (widgetColorMap[widget.type] ?? defaultWidgetColor).text,
-                    }}
+                    key={widget.id}
+                    className="h-14 px-3 border-b border-border/60 flex items-center gap-2 bg-background-secondary/20"
                   >
-                    {widget.type}
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: color.blockBg }}
+                      aria-hidden
+                    />
+                    <span className="truncate text-xs font-medium text-text-secondary">
+                      {widgetDisplayName(widget.type)}
+                    </span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -1326,10 +1339,11 @@ export const Timeline: React.FC = () => {
                 const isSelected = selectedWidgetId === widget.id;
                 const isLocked = Boolean(widget.locked);
                 const isHidden = Boolean(widget.hidden);
+                const color = widgetColorMap[widget.type] ?? defaultWidgetColor;
                 return (
                   <div
                     key={widget.id}
-                    className="relative h-14 border-b border-border/60 bg-background-secondary/10"
+                    className="group relative h-14 border-b border-border/60 bg-background-secondary/10"
                   >
                     <ContextMenu
                       onOpenChange={(open) => {
@@ -1338,15 +1352,13 @@ export const Timeline: React.FC = () => {
                     >
                       <ContextMenuTrigger asChild>
                         <button
-                          className={`absolute top-2 h-10 rounded-md text-xs font-normal px-3 text-left shadow transition-all ${
-                            isSelected ? "ring-2 ring-white/80" : ""
-                          }`}
+                          className="absolute top-2 h-10 overflow-hidden rounded-lg text-left shadow-sm transition-all"
                           style={{
                             left: blockLeft,
                             width: blockWidth,
-                            backgroundColor: (widgetColorMap[widget.type] ?? defaultWidgetColor).blockBg,
-                            color: (widgetColorMap[widget.type] ?? defaultWidgetColor).text,
-                            opacity: isHidden ? 0.45 : 1,
+                            background: `linear-gradient(135deg, ${color.blockBg}cc 0%, ${color.blockBg}66 100%)`,
+                            color: color.text,
+                            opacity: isHidden ? 0.4 : 1,
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1362,19 +1374,26 @@ export const Timeline: React.FC = () => {
                             );
                           }}
                         >
-                          <span className="uppercase">{widget.type}</span>
-                          <span className="ml-2 text-[10px] opacity-90">
-                            {widget.startTime.toFixed(1)}s -{" "}
-                            {(widget.startTime + widget.duration).toFixed(1)}s
+                          <span className="flex h-full items-center gap-1 px-2.5">
+                            <span className="truncate text-xs font-medium drop-shadow-sm">
+                              {widgetDisplayName(widget.type)}
+                            </span>
+                            {isLocked && (
+                              <span className="text-[10px] opacity-90">🔒</span>
+                            )}
+                            {isHidden && (
+                              <span className="text-[10px] opacity-90">🙈</span>
+                            )}
                           </span>
-                          {isLocked && <span className="ml-2 text-[10px]">🔒</span>}
-                          {isHidden && <span className="ml-1 text-[10px]">🙈</span>}
+                          {isSelected && (
+                            <span className="pointer-events-none absolute inset-0 rounded-lg border-2 border-primary shadow-[inset_0_0_10px_rgba(34,197,94,0.25)]" />
+                          )}
                         </button>
                       </ContextMenuTrigger>
                       <WidgetContextMenu widget={widget} />
                     </ContextMenu>
                     <div
-                      className="absolute top-2 w-2 h-10 cursor-ew-resize bg-black/30 hover:bg-black/50 rounded-l"
+                      className="absolute top-2 h-10 w-2 cursor-ew-resize rounded-l bg-white/20 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/50"
                       style={{ left: Math.max(0, blockLeft - 1) }}
                       onMouseDown={(e) => {
                         if (isLocked) return;
@@ -1384,7 +1403,7 @@ export const Timeline: React.FC = () => {
                       }}
                     />
                     <div
-                      className="absolute top-2 w-2 h-10 cursor-ew-resize bg-black/30 hover:bg-black/50 rounded-r"
+                      className="absolute top-2 h-10 w-2 cursor-ew-resize rounded-r bg-white/20 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/50"
                       style={{ left: blockLeft + blockWidth - 7 }}
                       onMouseDown={(e) => {
                         if (isLocked) return;
@@ -1393,23 +1412,6 @@ export const Timeline: React.FC = () => {
                         setResizingWidget({ id: widget.id, edge: "end" });
                       }}
                     />
-                    {isSelected && (
-                      <div className="absolute right-3 top-3 flex items-center gap-2">
-                        <span className="text-[10px] text-text-muted">
-                          Drag to move, edge to resize, right click for menu
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeWidget(widget.id);
-                            clearSelection();
-                          }}
-                          className="text-[10px] px-2 py-1 bg-red-500/20 text-red-300 border border-red-500/40 rounded hover:bg-red-500/30"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
                   </div>
                 );
               })}

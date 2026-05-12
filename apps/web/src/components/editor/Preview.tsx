@@ -514,7 +514,7 @@ export const Preview: React.FC = () => {
 
   // Calculate the actual end time for playback (where clips actually end)
   // This needs to recalculate whenever the timeline changes
-  // Includes video/audio/image clips, text clips, and shape clips.
+  // Includes video/audio/image clips, text clips, shape clips, and signage widgets.
   // Honors project.settings.playDuration when set as an explicit override.
   const actualEndTime = React.useMemo(() => {
     const override = project.settings.playDuration;
@@ -541,8 +541,21 @@ export const Preview: React.FC = () => {
       if (end > maxEnd) maxEnd = end;
     }
 
+    // Signage widgets contribute to the layout runtime too — without this a
+    // widget-only timeline would report 0 s and the player would never advance.
+    for (const widget of widgets) {
+      const end = widget.startTime + widget.duration;
+      if (end > maxEnd) maxEnd = end;
+    }
+
     return maxEnd;
-  }, [project.timeline.tracks, project.settings.playDuration, allTextClips, allShapeClips]);
+  }, [
+    project.timeline.tracks,
+    project.settings.playDuration,
+    allTextClips,
+    allShapeClips,
+    widgets,
+  ]);
 
   // RenderBridge is guaranteed to be initialized before Preview renders (see EditorInterface)
   useEffect(() => {
