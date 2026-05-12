@@ -490,54 +490,37 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
 export const migrateWidgets = (raw: SignageWidget[]): SignageWidget[] => raw.map(migrateWidget);
 
 /**
- * Recompute `project.timeline.duration` to the max of clip extents + widget
- * extents. Widgets live outside the action-executor's recalc; this is how we
- * keep the persisted duration field "linked" to widget add/move/resize.
+ * The widget store updates synchronously (so the canvas and timeline react
+ * immediately), then mirrors the new array onto the project via
+ * `useProjectStore.setSignageWidgets` — a `widget/setAll` action — so the change
+ * is recorded in the undo/redo history. The action executor recomputes
+ * `project.timeline.duration` including widget extents, so widgets stay linked
+ * to the timeline the same way clips are.
  */
-const recomputeProjectDuration = (widgets: SignageWidget[]) => {
-  const { project, setTimelineDuration } = useProjectStore.getState();
-  let maxEnd = 0;
-  for (const track of project.timeline.tracks) {
-    for (const clip of track.clips) {
-      const end = clip.startTime + clip.duration;
-      if (end > maxEnd) maxEnd = end;
-    }
-  }
-  for (const widget of widgets) {
-    const end = widget.startTime + widget.duration;
-    if (end > maxEnd) maxEnd = end;
-  }
-  setTimelineDuration(maxEnd);
-};
-
-export const useSignageWidgetStore = create<SignageWidgetState>((set) => ({
+export const useSignageWidgetStore = create<SignageWidgetState>((set, get) => ({
   widgets: [],
-  addWidget: (widget) =>
-    set((state) => {
-      const widgets = [...state.widgets, migrateWidget(widget)];
-      recomputeProjectDuration(widgets);
-      return { widgets };
-    }),
-  removeWidget: (id) =>
-    set((state) => {
-      const widgets = state.widgets.filter((widget) => widget.id !== id);
-      recomputeProjectDuration(widgets);
-      return { widgets };
-    }),
-  updateWidget: (id, updates) =>
-    set((state) => {
-      const widgets = state.widgets.map((widget) =>
-        widget.id === id ? { ...widget, ...updates } : widget,
-      );
-      recomputeProjectDuration(widgets);
-      return { widgets };
-    }),
-  updateWidgetConfig: (id, config) =>
-    set((state) => {
-      const widgets = state.widgets.map((widget) =>
-        widget.id === id ? { ...widget, config } : widget,
-      );
-      recomputeProjectDuration(widgets);
-      return { widgets };
-    }),
+  addWidget: (widget) => {
+    const widgets = [...get().widgets, migrateWidget(widget)];
+    set({ widgets });
+    void useProjectStore.getState().setSignageWidgets(widgets, "Add widget");
+  },
+  removeWidget: (id) => {
+    const widgets = get().widgets.filter((widget) => widget.id !== id);
+    set({ widgets });
+    void useProjectStore.getState().setSignageWidgets(widgets, "Delete widget");
+  },
+  updateWidget: (id, updates) => {
+    const widgets = get().widgets.map((widget) =>
+      widget.id === id ? { ...widget, ...updates } : widget,
+    );
+    set({ widgets });
+    void useProjectStore.getState().setSignageWidgets(widgets, "Update widget");
+  },
+  updateWidgetConfig: (id, config) => {
+    const widgets = get().widgets.map((widget) =>
+      widget.id === id ? { ...widget, config } : widget,
+    );
+    set({ widgets });
+    void useProjectStore.getState().setSignageWidgets(widgets, "Update widget");
+  },
 }));

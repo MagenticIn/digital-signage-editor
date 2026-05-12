@@ -13,6 +13,7 @@ import type {
   SubtitleAction,
   MediaAction,
   ProjectAction,
+  SignageWidgetAction,
 } from "../types/actions";
 import type { Project, Timeline, Track, Clip } from "../types";
 
@@ -72,6 +73,11 @@ export class ActionValidator {
       return this.validateAudioAction(action as AudioAction, project);
     } else if (type.startsWith("subtitle/")) {
       return this.validateSubtitleAction(action as SubtitleAction, project);
+    } else if (type.startsWith("widget/")) {
+      return this.validateSignageWidgetAction(
+        action as SignageWidgetAction,
+        project,
+      );
     }
 
     return [
@@ -80,6 +86,25 @@ export class ActionValidator {
         message: `Unknown action type: ${type}`,
       },
     ];
+  }
+
+  private validateSignageWidgetAction(
+    action: SignageWidgetAction,
+    _project: Project,
+  ): ValidationError[] {
+    switch (action.type) {
+      case "widget/setAll":
+        if (!Array.isArray(action.params.widgets)) {
+          return [
+            {
+              code: "INVALID_PARAMS",
+              message: "widget/setAll requires a widgets array",
+              path: "params.widgets",
+            },
+          ];
+        }
+        return [];
+    }
   }
 
   private validateProjectAction(

@@ -11,6 +11,7 @@ import type {
   SubtitleAction,
   MediaAction,
   ProjectAction,
+  SignageWidgetAction,
 } from "../types/actions";
 import type { Project, MediaItem } from "../types/project";
 import type { Track, Clip, Transition } from "../types/timeline";
@@ -69,9 +70,27 @@ export class InverseActionGenerator {
         action as SubtitleAction & Action,
         projectBefore,
       );
+    } else if (type.startsWith("widget/")) {
+      return this.generateSignageWidgetInverse(
+        action as SignageWidgetAction & Action,
+        projectBefore,
+      );
     }
 
     return null;
+  }
+
+  private generateSignageWidgetInverse(
+    action: SignageWidgetAction & Action,
+    projectBefore: Project,
+  ): Action | null {
+    switch (action.type) {
+      case "widget/setAll":
+        return this.createInverseAction(action, "widget/setAll", {
+          widgets: projectBefore.signageWidgets ?? [],
+          label: (action.params as { label?: string }).label,
+        });
+    }
   }
 
   private createInverseAction(

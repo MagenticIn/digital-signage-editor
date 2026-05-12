@@ -58,6 +58,8 @@ import {
 } from "../services/media-storage";
 import { restoreMediaItem } from "../utils/media-recovery";
 import { projectManager } from "../services/project-manager";
+import { useSignageWidgetStore, migrateWidgets } from "./signage-widget-store";
+import type { SignageWidget } from "../types/widgets";
 
 /**
  * ProjectState - Complete state interface for project management
@@ -108,6 +110,15 @@ export interface ProjectState {
    * executor's purview).
    */
   setTimelineDuration: (duration: number) => void;
+  /**
+   * Replace the project's signage widgets, recording the change in the
+   * undo/redo history (and updating timeline.duration). Used by the signage
+   * widget store so widget add/move/resize/config edits behave like clip edits.
+   */
+  setSignageWidgets: (
+    widgets: SignageWidget[],
+    label?: string,
+  ) => Promise<ActionResult>;
 
   // Media library actions
   importMedia: (file: File, sourceUrl?: string) => Promise<ActionResult>;
@@ -447,6 +458,8 @@ export const useProjectStore = create<ProjectState>()(
           clipRedoStack: [],
           error: null,
         });
+        // Start a fresh project with no signage widgets carried over.
+        useSignageWidgetStore.setState({ widgets: [] });
       },
 
       loadProject: (project: Project) => {
@@ -478,14 +491,24 @@ export const useProjectStore = create<ProjectState>()(
           ? { ...project, timeline: { ...project.timeline, duration: computedDuration } }
           : project;
 
+        // Hydrate signage widgets persisted on the layout. migrateWidgets
+        // back-fills legacy widget types/configs, so older layouts upgrade here.
+        // Keep project.signageWidgets pointing at the migrated array so it stays
+        // consistent with the widget store (undo/redo resyncs from it).
+        const migratedWidgets = migrateWidgets(
+          (project.signageWidgets ?? []) as SignageWidget[],
+        );
+
         set({
-          project: fixedProject,
+          project: { ...fixedProject, signageWidgets: migratedWidgets },
           actionHistory: newHistory,
           actionExecutor: newExecutor,
           clipUndoStack: [],
           clipRedoStack: [],
           error: null,
         });
+
+        useSignageWidgetStore.setState({ widgets: migratedWidgets });
 
         // Auto-restore placeholder assets from saved FileSystemFileHandles (same machine)
         const placeholders = fixedProject.mediaLibrary.items.filter(
@@ -570,6 +593,26 @@ export const useProjectStore = create<ProjectState>()(
           modifiedAt: Date.now(),
         };
         set({ project: nextProject });
+      },
+
+      setSignageWidgets: async (
+        widgets: SignageWidget[],
+        label?: string,
+      ): Promise<ActionResult> => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "widget/setAll",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { widgets, label },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          // execute() mutates `project` in place (signageWidgets + timeline.duration);
+          // re-wrap so subscribers see a new reference.
+          set({ project: { ...get().project } });
+        }
+        return result;
       },
 
       // Update project settings
@@ -2280,6 +2323,11 @@ export const useProjectStore = create<ProjectState>()(
         const result = await actionExecutor.undo(project);
         if (result.success) {
           set({ project: { ...project } });
+          // Keep the signage widget store in sync if the undone action touched
+          // Project.signageWidgets (widget/setAll). No-op for other actions.
+          useSignageWidgetStore.setState({
+            widgets: (get().project.signageWidgets ?? []) as SignageWidget[],
+          });
         }
         return result;
       },
@@ -2394,6 +2442,11 @@ export const useProjectStore = create<ProjectState>()(
         const result = await actionExecutor.redo(project);
         if (result.success) {
           set({ project: { ...project } });
+          // Keep the signage widget store in sync if the redone action touched
+          // Project.signageWidgets (widget/setAll). No-op for other actions.
+          useSignageWidgetStore.setState({
+            widgets: (get().project.signageWidgets ?? []) as SignageWidget[],
+          });
         }
         return result;
       },
@@ -2429,19 +2482,7 @@ export const useProjectStore = create<ProjectState>()(
       // Auto-save methods
       initializeAutoSave: async () => {
         await initializeAutoSave();
-        autoSaveManager.start(() => {
-          const { project } = get();
-          const titleEngine = useEngineStore.getState().getTitleEngine();
-          const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-
-          return {
-            ...project,
-            textClips: titleEngine?.getAllTextClips() || [],
-            shapeClips: graphicsEngine?.getAllShapeClips() || [],
-            svgClips: graphicsEngine?.getAllSVGClips() || [],
-            stickerClips: graphicsEngine?.getAllStickerClips() || [],
-          };
-        });
+        autoSaveManager.start(() => get().getFullProject());
 
         // Subscribe to project state changes to mark as dirty for auto-save
         // Uses Zustand's subscribeWithSelector middleware to detect changes to project object only
@@ -2499,8 +2540,15 @@ export const useProjectStore = create<ProjectState>()(
 
           const newHistory = new ActionHistory();
           const newExecutor = new ActionExecutor(newHistory);
+          const migratedWidgets = migrateWidgets(
+            (recoveredProject.signageWidgets ?? []) as SignageWidget[],
+          );
+          const projectWithWidgets: Project = {
+            ...projectWithMedia,
+            signageWidgets: migratedWidgets,
+          };
           set({
-            project: projectWithMedia,
+            project: projectWithWidgets,
             actionHistory: newHistory,
             actionExecutor: newExecutor,
             clipUndoStack: [],
@@ -2508,25 +2556,16 @@ export const useProjectStore = create<ProjectState>()(
             error: null,
           });
 
-          await projectManager.addToRecent(projectWithMedia);
+          useSignageWidgetStore.setState({ widgets: migratedWidgets });
+
+          await projectManager.addToRecent(projectWithWidgets);
           return true;
         }
         return false;
       },
 
       forceSave: async () => {
-        const { project } = get();
-        const titleEngine = useEngineStore.getState().getTitleEngine();
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-
-        const fullProject: Project = {
-          ...project,
-          textClips: titleEngine?.getAllTextClips() || [],
-          shapeClips: graphicsEngine?.getAllShapeClips() || [],
-          svgClips: graphicsEngine?.getAllSVGClips() || [],
-          stickerClips: graphicsEngine?.getAllStickerClips() || [],
-        };
-        await autoSaveManager.forceSave(fullProject);
+        await autoSaveManager.forceSave(get().getFullProject());
       },
 
       getFullProject: (): Project => {
@@ -2540,6 +2579,7 @@ export const useProjectStore = create<ProjectState>()(
           shapeClips: graphicsEngine?.getAllShapeClips() || [],
           svgClips: graphicsEngine?.getAllSVGClips() || [],
           stickerClips: graphicsEngine?.getAllStickerClips() || [],
+          signageWidgets: useSignageWidgetStore.getState().widgets,
         };
       },
 

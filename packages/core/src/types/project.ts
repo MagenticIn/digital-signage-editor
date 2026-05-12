@@ -37,6 +37,13 @@ export interface Project {
   readonly shapeClips?: ShapeClip[];
   readonly svgClips?: SVGClip[];
   readonly stickerClips?: StickerClip[];
+  /**
+   * Signage widgets (clock, ticker, iframe, …) overlaid on the canvas.
+   * Holds `SignageWidget`-shaped objects; typed as `unknown[]` at this layer
+   * to avoid an upward import from the web app — the web app casts on read,
+   * mirroring how `MediaItem.widgetConfig` is kept as a generic record here.
+   */
+  readonly signageWidgets?: readonly unknown[];
 }
 
 export interface MediaLibrary {

@@ -41,6 +41,8 @@ import {
   Popover,
   PopoverTrigger,
   PopoverContent,
+  ContextMenu,
+  ContextMenuTrigger,
   // DropdownMenu,
   // DropdownMenuTrigger,
   // DropdownMenuContent,
@@ -57,6 +59,7 @@ import {
   formatTimecode,
   getTrackInfo,
 } from "./timeline/index";
+import { WidgetContextMenu } from "./timeline/WidgetContextMenu";
 
 export const Timeline: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -205,11 +208,6 @@ export const Timeline: React.FC = () => {
     id: string;
     edge: "start" | "end";
   } | null>(null);
-  const [widgetMenu, setWidgetMenu] = useState<{
-    widgetId: string;
-    x: number;
-    y: number;
-  } | null>(null);
 
   const getSnappedTime = useCallback(
     (candidate: number) => {
@@ -314,13 +312,6 @@ export const Timeline: React.FC = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedWidgetId, widgets, updateWidget, removeWidget, clearSelection]);
-
-  useEffect(() => {
-    if (!widgetMenu) return;
-    const dismiss = () => setWidgetMenu(null);
-    window.addEventListener("click", dismiss);
-    return () => window.removeEventListener("click", dismiss);
-  }, [widgetMenu]);
 
   const trackHeightsMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -1340,44 +1331,48 @@ export const Timeline: React.FC = () => {
                     key={widget.id}
                     className="relative h-14 border-b border-border/60 bg-background-secondary/10"
                   >
-                    <button
-                      className={`absolute top-2 h-10 rounded-md text-xs font-normal px-3 text-left shadow transition-all ${
-                        isSelected ? "ring-2 ring-white/80" : ""
-                      }`}
-                      style={{
-                        left: blockLeft,
-                        width: blockWidth,
-                        backgroundColor: (widgetColorMap[widget.type] ?? defaultWidgetColor).blockBg,
-                        color: (widgetColorMap[widget.type] ?? defaultWidgetColor).text,
-                        opacity: isHidden ? 0.45 : 1,
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        select({ type: "widget", id: widget.id });
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        select({ type: "widget", id: widget.id });
-                        setWidgetMenu({ widgetId: widget.id, x: e.clientX, y: e.clientY });
-                      }}
-                      onMouseDown={(e) => {
-                        if (isLocked) return;
-                        e.stopPropagation();
-                        setDraggingWidgetId(widget.id);
-                        setDragOffsetSeconds(
-                          e.nativeEvent.offsetX / Math.max(1, pixelsPerSecond),
-                        );
+                    <ContextMenu
+                      onOpenChange={(open) => {
+                        if (open) select({ type: "widget", id: widget.id });
                       }}
                     >
-                      <span className="uppercase">{widget.type}</span>
-                      <span className="ml-2 text-[10px] opacity-90">
-                        {widget.startTime.toFixed(1)}s -{" "}
-                        {(widget.startTime + widget.duration).toFixed(1)}s
-                      </span>
-                      {isLocked && <span className="ml-2 text-[10px]">🔒</span>}
-                      {isHidden && <span className="ml-1 text-[10px]">🙈</span>}
-                    </button>
+                      <ContextMenuTrigger asChild>
+                        <button
+                          className={`absolute top-2 h-10 rounded-md text-xs font-normal px-3 text-left shadow transition-all ${
+                            isSelected ? "ring-2 ring-white/80" : ""
+                          }`}
+                          style={{
+                            left: blockLeft,
+                            width: blockWidth,
+                            backgroundColor: (widgetColorMap[widget.type] ?? defaultWidgetColor).blockBg,
+                            color: (widgetColorMap[widget.type] ?? defaultWidgetColor).text,
+                            opacity: isHidden ? 0.45 : 1,
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            select({ type: "widget", id: widget.id });
+                          }}
+                          onContextMenu={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => {
+                            if (isLocked) return;
+                            e.stopPropagation();
+                            setDraggingWidgetId(widget.id);
+                            setDragOffsetSeconds(
+                              e.nativeEvent.offsetX / Math.max(1, pixelsPerSecond),
+                            );
+                          }}
+                        >
+                          <span className="uppercase">{widget.type}</span>
+                          <span className="ml-2 text-[10px] opacity-90">
+                            {widget.startTime.toFixed(1)}s -{" "}
+                            {(widget.startTime + widget.duration).toFixed(1)}s
+                          </span>
+                          {isLocked && <span className="ml-2 text-[10px]">🔒</span>}
+                          {isHidden && <span className="ml-1 text-[10px]">🙈</span>}
+                        </button>
+                      </ContextMenuTrigger>
+                      <WidgetContextMenu widget={widget} />
+                    </ContextMenu>
                     <div
                       className="absolute top-2 w-2 h-10 cursor-ew-resize bg-black/30 hover:bg-black/50 rounded-l"
                       style={{ left: Math.max(0, blockLeft - 1) }}
@@ -1470,46 +1465,6 @@ export const Timeline: React.FC = () => {
                 />
               )}
 
-              {widgetMenu && (() => {
-                const widget = widgets.find((item) => item.id === widgetMenu.widgetId);
-                if (!widget) return null;
-                return (
-                  <div
-                    className="fixed z-[120] w-44 rounded-md border border-border bg-background-secondary shadow-2xl p-1"
-                    style={{ left: widgetMenu.x, top: widgetMenu.y }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      className="w-full text-left px-2 py-1.5 text-xs rounded text-red-300 hover:bg-red-500/20"
-                      onClick={() => {
-                        removeWidget(widget.id);
-                        if (selectedWidgetId === widget.id) clearSelection();
-                        setWidgetMenu(null);
-                      }}
-                    >
-                      Delete
-                    </button>
-                    <button
-                      className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-background-elevated"
-                      onClick={() => {
-                        updateWidget(widget.id, { locked: !widget.locked });
-                        setWidgetMenu(null);
-                      }}
-                    >
-                      {widget.locked ? "Unlock" : "Lock"}
-                    </button>
-                    <button
-                      className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-background-elevated"
-                      onClick={() => {
-                        updateWidget(widget.id, { hidden: !widget.hidden });
-                        setWidgetMenu(null);
-                      }}
-                    >
-                      {widget.hidden ? "Show" : "Hide"}
-                    </button>
-                  </div>
-                );
-              })()}
             </div>
           </div>
         </div>

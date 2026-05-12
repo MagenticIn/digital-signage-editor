@@ -216,6 +216,17 @@ export type SubtitleAction =
     }
   | { type: "subtitle/remove"; params: { subtitleId: string } }
   | { type: "subtitle/setStyle"; params: { style: SubtitleStyle } };
+// Signage widget actions.
+// Signage widgets (clock, ticker, iframe, …) are overlay items stored on
+// `Project.signageWidgets`. A single coarse action replaces the whole array;
+// its inverse restores the prior array, which gives exact undo/redo with the
+// same auto-grouping (rapid drags collapse into one history entry) the timeline
+// gets. `label` is an optional human-readable description for the History panel.
+export type SignageWidgetAction = {
+  type: "widget/setAll";
+  params: { widgets: readonly unknown[]; label?: string };
+};
+
 export type TimelineAction =
   | ProjectAction
   | MediaAction
@@ -226,4 +237,5 @@ export type TimelineAction =
   | KeyframeAction
   | TransitionAction
   | AudioAction
-  | SubtitleAction;
+  | SubtitleAction
+  | SignageWidgetAction;

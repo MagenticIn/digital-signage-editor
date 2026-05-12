@@ -51,6 +51,8 @@ const ACTION_DESCRIPTIONS: Record<
   "project/updateSettings": () => "Update settings",
   "media/import": () => "Import media",
   "media/delete": () => "Delete media",
+  "widget/setAll": (params) =>
+    (typeof params.label === "string" && params.label) || "Update widgets",
 };
 
 function getActionDescription(action: Action): string {

@@ -12,6 +12,7 @@ import type {
   SubtitleAction,
   MediaAction,
   ProjectAction,
+  SignageWidgetAction,
 } from "../types/actions";
 import type {
   Project,
@@ -224,10 +225,26 @@ export class ActionExecutor {
       this.applyAudioAction(action as AudioAction, project);
     } else if (type.startsWith("subtitle/")) {
       this.applySubtitleAction(action as SubtitleAction, project);
+    } else if (type.startsWith("widget/")) {
+      this.applySignageWidgetAction(action as SignageWidgetAction, project);
     }
 
-    // Recompute timeline duration from clips after any action that may affect it
+    // Recompute timeline duration from clips (and signage widgets) after any
+    // action that may affect it.
     this.recalculateTimelineDuration(project);
+  }
+
+  private applySignageWidgetAction(
+    action: SignageWidgetAction,
+    project: Project,
+  ): void {
+    switch (action.type) {
+      case "widget/setAll":
+        (project as { signageWidgets?: readonly unknown[] }).signageWidgets =
+          action.params.widgets;
+        (project as { modifiedAt: number }).modifiedAt = Date.now();
+        break;
+    }
   }
 
   private recalculateTimelineDuration(project: Project): void {
@@ -235,6 +252,17 @@ export class ActionExecutor {
     for (const track of project.timeline.tracks) {
       for (const clip of track.clips) {
         const end = clip.startTime + clip.duration;
+        if (end > maxEnd) maxEnd = end;
+      }
+    }
+    const widgets = (project as { signageWidgets?: readonly unknown[] })
+      .signageWidgets;
+    if (Array.isArray(widgets)) {
+      for (const w of widgets as ReadonlyArray<{
+        startTime?: number;
+        duration?: number;
+      }>) {
+        const end = (w?.startTime ?? 0) + (w?.duration ?? 0);
         if (end > maxEnd) maxEnd = end;
       }
     }

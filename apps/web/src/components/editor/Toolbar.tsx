@@ -140,6 +140,9 @@ export const Toolbar: React.FC = () => {
 
     const normalizedProject = {
       ...project,
+      // Persist widgets on the project too, so this payload's `project` round-trips
+      // through useProjectStore.loadProject() (which hydrates the widget store).
+      signageWidgets,
       settings: {
         ...project.settings,
         backgroundColor: project.settings.backgroundColor ?? "rgba(0,0,0,1)",
