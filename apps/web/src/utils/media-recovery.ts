@@ -88,7 +88,9 @@ export async function restoreMediaItem(
   let thumbnailUrl = item.thumbnailUrl;
 
   if (!thumbnailUrl || thumbnailUrl.startsWith("blob:")) {
-    thumbnailUrl = await generateThumbnailFromBlob(blob, item.type);
+    if (item.type !== "widget") {
+      thumbnailUrl = await generateThumbnailFromBlob(blob, item.type);
+    }
   }
 
   return {

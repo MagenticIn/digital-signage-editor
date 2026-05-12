@@ -46,7 +46,7 @@ export interface MediaLibrary {
 export interface MediaItem {
   readonly id: string;
   readonly name: string;
-  readonly type: "video" | "audio" | "image";
+  readonly type: "video" | "audio" | "image" | "widget";
   readonly fileHandle: FileSystemFileHandle | null;
   readonly blob: Blob | null;
   readonly metadata: MediaMetadata;
@@ -58,6 +58,17 @@ export interface MediaItem {
   /** File hint stored in JSON for cross-session/cross-machine asset matching */
   readonly sourceFile?: { name: string; size: number; lastModified: number; folder?: string };
 
+  /**
+   * Widget metadata — set only when `type === "widget"`.
+   * `widgetType` is the web-app `SignageWidgetType` literal (string in core to
+   * avoid an upward import). `widgetConfig` is the matching `WidgetConfig`
+   * union member (kept as a generic record at this layer; the web app casts
+   * on read).
+   */
+  readonly widgetType?: string;
+  readonly widgetConfig?: Record<string, unknown>;
+  /** Widget canvas placement in design-space pixels — same shape as the old SignageWidget.layout. */
+  readonly widgetLayout?: { x: number; y: number; width: number; height: number };
 }
 
 /** Thumbnail for filmstrip display in timeline */
