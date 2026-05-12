@@ -8,18 +8,6 @@ import React, {
 import {
   Undo2,
   Redo2,
-  Layers,
-  // Film,
-  // Music,
-  // Image,
-  // Type,
-  // Shapes,
-  // Scissors,
-  ChevronUp,
-  ChevronDown,
-  Trash2,
-  // Plus,
-  // ChevronDown as ChevronDownIcon,
   Rows3,
   Rows2,
   X,
@@ -38,9 +26,6 @@ import { useEngineStore } from "../../stores/engine-store";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
 import {
   IconButton,
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
   ContextMenu,
   ContextMenuTrigger,
   // DropdownMenu,
@@ -57,7 +42,6 @@ import {
   BeatMarkerOverlay,
   MarkerIndicator,
   formatTimecode,
-  getTrackInfo,
 } from "./timeline/index";
 import { WidgetContextMenu } from "./timeline/WidgetContextMenu";
 
@@ -71,13 +55,7 @@ export const Timeline: React.FC = () => {
     redo,
     canUndo,
     canRedo,
-    // splitClip,
-    removeClip,
-    // addTrack,
     reorderTrack,
-    deleteShapeClip,
-    deleteSVGClip,
-    deleteTextClip,
     removeMarker,
     updateMarker,
     updateClipKeyframes,
@@ -105,8 +83,6 @@ export const Timeline: React.FC = () => {
     setTrackHeightById,
     getTrackHeight,
   } = useTimelineStore();
-
-  const [showLayersPanel, setShowLayersPanel] = useState(false);
 
   const {
     select,
@@ -489,47 +465,6 @@ export const Timeline: React.FC = () => {
   //   }
   // }, [selectedClipIds, playheadPosition, splitClip]);
 
-  const handleDelete = useCallback(async () => {
-    if (selectedWidgetId) {
-      removeWidget(selectedWidgetId);
-      clearSelection();
-      return;
-    }
-    if (selectedClipIds.length === 0) return;
-
-    for (const id of selectedClipIds) {
-      const textClip = allTextClips.find((tc) => tc.id === id);
-      if (textClip) {
-        deleteTextClip(id);
-        continue;
-      }
-
-      const graphicClip = allShapeClips.find((gc) => gc.id === id);
-      if (graphicClip) {
-        if (graphicClip.type === "svg") {
-          deleteSVGClip(id);
-        } else {
-          deleteShapeClip(id);
-        }
-        continue;
-      }
-
-      removeClip(id);
-    }
-    clearSelection();
-  }, [
-    selectedClipIds,
-    removeClip,
-    clearSelection,
-    allTextClips,
-    allShapeClips,
-    deleteTextClip,
-    deleteShapeClip,
-    deleteSVGClip,
-    selectedWidgetId,
-    removeWidget,
-  ]);
-
   const handleBackgroundClick = useCallback(() => {
     clearSelection();
   }, [clearSelection]);
@@ -876,153 +811,6 @@ export const Timeline: React.FC = () => {
             />
           </div>
 
-          <div className="w-px h-6 bg-border mx-1" />
-
-          <div className="flex bg-background-tertiary rounded-lg p-1 border border-border gap-1">
-            {/*
-            <button
-              onClick={handleSplit}
-              disabled={selectedClipIds.length !== 1}
-              title="Split clip at playhead (S)"
-              className={`flex items-center gap-1.5 px-2 py-1 rounded transition-colors ${
-                selectedClipIds.length === 1
-                  ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border border-orange-500/30"
-                  : "text-text-muted opacity-50 cursor-not-allowed"
-              }`}
-            >
-              <Scissors size={14} />
-              <span className="text-[10px] font-medium">SPLIT</span>
-            </button>
-            */}
-            <IconButton
-              icon={Trash2}
-              onClick={handleDelete}
-              disabled={selectedClipIds.length === 0}
-              title="Delete clip (Del)"
-              className="hover:text-red-500"
-            />
-          </div>
-
-          <div className="w-px h-6 bg-border mx-1" />
-
-          {/*
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 transition-colors"
-                title="Add new track"
-              >
-                <Plus size={14} />
-                <span className="text-[11px] font-semibold">Add Track</span>
-                <ChevronDownIcon size={12} className="ml-0.5 opacity-60" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-48">
-              <DropdownMenuItem onClick={() => addTrack("video")}>
-                <Film size={16} className="text-green-400" />
-                <span>Video Track</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => addTrack("audio")}>
-                <Music size={16} className="text-blue-400" />
-                <span>Audio Track</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => addTrack("image")}>
-                <Image size={16} className="text-purple-400" />
-                <span>Image Track</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => addTrack("text")}>
-                <Type size={16} className="text-yellow-400" />
-                <span>Text Track</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => addTrack("graphics")}>
-                <Shapes size={16} className="text-pink-400" />
-                <span>Graphics Track</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <div className="w-px h-6 bg-border mx-1" />
-          */}
-
-          <Popover open={showLayersPanel} onOpenChange={setShowLayersPanel}>
-            <PopoverTrigger asChild>
-              <button
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
-                  showLayersPanel
-                    ? "bg-primary/20 text-primary"
-                    : "hover:bg-background-elevated text-text-secondary hover:text-text-primary"
-                }`}
-                title="Manage track layers"
-              >
-                <Layers size={14} />
-                <span className="text-[10px] font-medium tracking-wide">LAYERS</span>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="start"
-              sideOffset={8}
-              className="w-64 p-0 bg-background-secondary border-border"
-            >
-              <div className="flex items-center justify-between px-3 py-2.5 border-b border-border bg-background-tertiary">
-                <span className="text-xs font-semibold text-text-primary">
-                  Track Layers
-                </span>
-              </div>
-              <div className="p-2 max-h-60 overflow-y-auto">
-                {tracks.length === 0 ? (
-                  <p className="text-xs text-text-muted text-center py-6">
-                    No tracks yet
-                  </p>
-                ) : (
-                  <div className="space-y-0.5">
-                    {tracks.map((track, index) => {
-                      const info = getTrackInfo(track, index);
-                      return (
-                        <div
-                          key={track.id}
-                          className="flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-background-tertiary group transition-colors cursor-default"
-                        >
-                          <div
-                            className={`w-7 h-7 rounded-md flex items-center justify-center ${info.bgLight}`}
-                          >
-                            <info.icon size={14} className={info.textColor} />
-                          </div>
-                          <span className="text-[11px] font-medium text-text-primary flex-1 truncate">
-                            {track.name || info.label}
-                          </span>
-                          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() =>
-                                index > 0 && reorderTrack(track.id, index - 1)
-                              }
-                              disabled={index === 0}
-                              className="p-1.5 rounded-md hover:bg-background-elevated disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                              title="Move up"
-                            >
-                              <ChevronUp size={12} />
-                            </button>
-                            <button
-                              onClick={() =>
-                                index < tracks.length - 1 &&
-                                reorderTrack(track.id, index + 1)
-                              }
-                              disabled={index === tracks.length - 1}
-                              className="p-1.5 rounded-md hover:bg-background-elevated disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                              title="Move down"
-                            >
-                              <ChevronDown size={12} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
         </div>
 
         <div className="font-mono text-primary text-sm font-bold tracking-wider bg-background-tertiary px-4 py-1.5 rounded-lg border border-primary/20 shadow-[0_0_12px_rgba(34,197,94,0.15)]">

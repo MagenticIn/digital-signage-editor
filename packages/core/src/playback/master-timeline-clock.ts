@@ -185,7 +185,12 @@ export class MasterTimelineClock {
 
       const time = this.currentTime;
 
-      if (time >= this.duration && !this.loopEnabled) {
+      // A non-positive / non-finite duration means "no fixed end" — keep
+      // running until something explicitly stops the clock. (Without this guard
+      // a duration of 0 makes `0 >= 0` true on the very first frame, so a
+      // media-less timeline whose end time lives only in the editor's
+      // `actualEndTime` would freeze the playhead at 0.)
+      if (this.duration > 0 && time >= this.duration && !this.loopEnabled) {
         this.stop();
         return;
       }

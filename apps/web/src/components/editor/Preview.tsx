@@ -557,6 +557,17 @@ export const Preview: React.FC = () => {
     widgets,
   ]);
 
+  // Keep the playback clock's duration in lockstep with the editor's
+  // actualEndTime (which folds in playDuration + widgets + text/shape clips) so
+  // it is never left at a stale 0 by PlaybackController.setProject (which only
+  // sees getEffectiveProjectDuration = playDuration ?? timeline.duration, and
+  // can't see widget/text/shape extents). A 0/empty actualEndTime maps to
+  // Infinity ("no fixed end") rather than 0, which would otherwise stop the
+  // clock on the first frame.
+  useEffect(() => {
+    getMasterClock().setDuration(actualEndTime > 0 ? actualEndTime : Infinity);
+  }, [actualEndTime]);
+
   // RenderBridge is guaranteed to be initialized before Preview renders (see EditorInterface)
   useEffect(() => {
     if (renderBridgeInitialized.current) return;
@@ -1946,7 +1957,7 @@ export const Preview: React.FC = () => {
       await Promise.all(loadPromises);
 
       const masterClock = getMasterClock();
-      masterClock.setDuration(actualEndTime);
+      masterClock.setDuration(actualEndTime > 0 ? actualEndTime : Infinity);
       masterClock.seek(startPosition);
 
       if (!audioGraphRef.current) {
@@ -2941,7 +2952,7 @@ export const Preview: React.FC = () => {
       }
 
       const masterClock = getMasterClock();
-      masterClock.setDuration(actualEndTime);
+      masterClock.setDuration(actualEndTime > 0 ? actualEndTime : Infinity);
       masterClock.seek(playbackStartPosition);
 
       audioGraph.seekTo(playbackStartPosition);
@@ -3017,6 +3028,19 @@ export const Preview: React.FC = () => {
           const hasAnyContentAtPlayhead =
             hasVisualContent || hasCurrentAudioClip;
 
+          // Signage widgets (rendered as an HTML overlay on top of the canvas)
+          // and an explicit Canvas "Duration (seconds)" give a layout runtime
+          // that timeline clips don't express. Treat that as a reason to keep
+          // playing through an empty patch — without this a widget-only /
+          // playDuration-only timeline is seen as "no content → end of
+          // playback" and the playhead freezes at 0 on the first frame.
+          const layoutHasRuntimeBeyondClips =
+            widgets.some(
+              (w) => w.startTime + w.duration > currentPlayhead,
+            ) ||
+            (typeof settings.playDuration === "number" &&
+              settings.playDuration > currentPlayhead);
+
           if (!hasAnyContentAtPlayhead) {
             const nextClipTime = findNextClipStartTime(currentPlayhead);
             const nextTextTime = findNextTextClipStartTime(currentPlayhead);
@@ -3032,7 +3056,8 @@ export const Preview: React.FC = () => {
             const nextTime =
               nextTimes.length > 0 ? Math.min(...nextTimes) : null;
 
-            if (nextTime !== null) {
+            if (nextTime !== null && !layoutHasRuntimeBeyondClips) {
+              // Empty gap between clips with nothing overlaying it — skip it.
               masterClock.seek(nextTime);
               audioGraph.seekTo(nextTime);
               isProcessingFrame = false;
@@ -3040,7 +3065,11 @@ export const Preview: React.FC = () => {
                 processMultiTrackFrame,
               );
               return;
-            } else {
+            }
+
+            if (!layoutHasRuntimeBeyondClips) {
+              // Nothing here, nothing upcoming, and no widgets / Canvas
+              // duration — playback is over.
               isProcessingFrame = false;
               cleanupPlaybackResources();
               cleanupAudioResources();
@@ -3052,6 +3081,24 @@ export const Preview: React.FC = () => {
               }
               return;
             }
+
+            // No clip content at the playhead, but the layout still has
+            // runtime (signage widgets and/or an explicit Canvas duration):
+            // paint the canvas background and keep the clock running up to
+            // actualEndTime. Widgets render as an HTML overlay on top.
+            mainCtx.fillStyle = settings.backgroundColor || "#000000";
+            mainCtx.fillRect(0, 0, canvas.width, canvas.height);
+            const nowBlankFrame = performance.now();
+            if (
+              nowBlankFrame - lastPlayheadUpdateRef.current >=
+              PLAYHEAD_UPDATE_THROTTLE_MS
+            ) {
+              lastPlayheadUpdateRef.current = nowBlankFrame;
+              setPlayheadPosition(currentPlayhead);
+            }
+            isProcessingFrame = false;
+            animationRef.current = requestAnimationFrame(processMultiTrackFrame);
+            return;
           }
 
           for (const { clip, trackIndex } of activeClips) {
