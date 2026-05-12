@@ -57,7 +57,6 @@ function stripForSignageSave(project: Project): Project {
 }
 
 export const Toolbar: React.FC = () => {
-  const { project } = useProjectStore();
   const forceSave = useProjectStore((state) => state.forceSave);
   const panels = useUIStore((s) => s.panels);
   const togglePanel = useUIStore((s) => s.togglePanel);
@@ -78,6 +77,10 @@ export const Toolbar: React.FC = () => {
    * - `effectiveDuration` is exposed explicitly for the replayer.
    */
   const buildPreviewCorePayload = useCallback(() => {
+    // Base the snapshot on getFullProject() (not the store's bare `project`),
+    // so engine-held clips — text / shape / SVG / sticker — are included in the
+    // payload, not just media clips and widgets.
+    const project = useProjectStore.getState().getFullProject();
     const rawWidgets = useSignageWidgetStore.getState().widgets;
     const signageWidgets = rawWidgets.map(migrateWidget);
     const autoDuration = getEffectiveProjectDuration(project);
@@ -171,7 +174,7 @@ export const Toolbar: React.FC = () => {
       signageWidgets,
       effectiveDuration,
     };
-  }, [project]);
+  }, []);
 
   const handleDownloadEditorState = useCallback(() => {
     const timestamp = new Date()

@@ -42,6 +42,7 @@ import {
 } from "@openreel/core";
 import { useEngineStore } from "../../stores/engine-store";
 import { useSignageWidgetStore } from "../../stores/signage-widget-store";
+import { useRouter } from "../../hooks/use-router";
 import type {
   AudioWidgetConfig,
   CalendarConfig,
@@ -247,6 +248,9 @@ export const Preview: React.FC = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isDark = useThemeStore((state) => state.isDark);
+  // Read-only preview screen (`?preview=1`) — disables editor-only affordances
+  // (widget drag / resize / selection) while keeping playback + widget content live.
+  const isPreview = useRouter().params.preview === "1";
   const widgets = useSignageWidgetStore((state) => state.widgets);
   const updateWidget = useSignageWidgetStore((state) => state.updateWidget);
 
@@ -411,8 +415,6 @@ export const Preview: React.FC = () => {
     isScrubbing,
     pause,
     togglePlayback,
-    seekTo,
-    seekRelative,
     setPlayheadPosition,
   } = useTimelineStore();
 
@@ -4643,24 +4645,43 @@ export const Preview: React.FC = () => {
     updateClipTransform,
   ]);
 
+  // A *complete* seek: move the playback clock (so it sticks during playback,
+  // not just for one frame), reset the play-resume anchor, sync the audio
+  // graph, and update the store (so the paused render-on-pause path repaints
+  // and the progress bar/time readout update). The bare `seekTo`/`seekRelative`
+  // store actions only set `playheadPosition`, which the playback loop
+  // overwrites every frame and the play-resume path ignores.
+  const seekToTime = useCallback(
+    (target: number) => {
+      const clamped = Math.max(
+        0,
+        actualEndTime > 0 ? Math.min(target, actualEndTime) : target,
+      );
+      getMasterClock().seek(clamped);
+      startPositionRef.current = clamped;
+      audioGraphRef.current?.seekTo(clamped);
+      setPlayheadPosition(clamped);
+    },
+    [actualEndTime, setPlayheadPosition],
+  );
+
   const handleScrubClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const percentage = Math.max(0, Math.min(1, x / rect.width));
-      const newTime = percentage * (actualEndTime || 10);
-      seekTo(newTime);
+      seekToTime(percentage * (actualEndTime || 10));
     },
-    [actualEndTime, seekTo],
+    [actualEndTime, seekToTime],
   );
 
   const handleSkipBack = useCallback(() => {
-    seekRelative(-5);
-  }, [seekRelative]);
+    seekToTime(playheadPosition - 5);
+  }, [playheadPosition, seekToTime]);
 
   const handleSkipForward = useCallback(() => {
-    seekRelative(5);
-  }, [seekRelative]);
+    seekToTime(playheadPosition + 5);
+  }, [playheadPosition, seekToTime]);
 
   const handleFullscreen = useCallback(() => {
     const container = containerRef.current;
@@ -4770,6 +4791,7 @@ export const Preview: React.FC = () => {
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
+    if (isPreview) return;
     if (!draggingWidget && !resizingWidget) return;
 
     const snapValue = (value: number, candidates: number[]) => {
@@ -4926,6 +4948,7 @@ export const Preview: React.FC = () => {
       window.removeEventListener("mouseup", onUp);
     };
   }, [
+    isPreview,
     draggingWidget,
     resizingWidget,
     widgets,
@@ -5332,7 +5355,8 @@ export const Preview: React.FC = () => {
           {activeWidgets.map((widget) => {
             const widgetTime = Math.max(0, playheadPosition - widget.startTime);
             const layout = widget.layout ?? { x: 40, y: 40, width: 360, height: 220 };
-            const selected = selectedWidgetId === widget.id;
+            // Read-only preview: never "selected" → no outline, no resize handles.
+            const selected = !isPreview && selectedWidgetId === widget.id;
             const isTicker = widget.type === "ticker";
             const baseWidth = 360;
             const baseHeight = 220;
@@ -5360,14 +5384,18 @@ export const Preview: React.FC = () => {
                   height: layout.height,
                   overflow: "hidden",
                 }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  if (!widget.locked) {
-                    setDraggingWidget(widget.id);
-                    dragStartRef.current = { x: e.clientX, y: e.clientY };
-                  }
-                  select({ type: "widget", id: widget.id });
-                }}
+                onMouseDown={
+                  isPreview
+                    ? undefined
+                    : (e) => {
+                        e.stopPropagation();
+                        if (!widget.locked) {
+                          setDraggingWidget(widget.id);
+                          dragStartRef.current = { x: e.clientX, y: e.clientY };
+                        }
+                        select({ type: "widget", id: widget.id });
+                      }
+                }
               >
                 <div className="relative w-full h-full overflow-hidden rounded-md">
                   {isTicker ? (
