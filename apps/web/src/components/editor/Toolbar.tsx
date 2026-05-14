@@ -22,7 +22,11 @@ import { useRouter } from "../../hooks/use-router";
 import { AgeruWordmark } from "../AgeruWordmark";
 import { HistoryPanel } from "./inspector/HistoryPanel";
 import { toast } from "../../stores/notification-store";
-import { saveSignageLayout, publishSignageLayout } from "../../services/signage-layouts-api";
+import {
+  saveSignageLayout,
+  publishSignageLayout,
+  type SaveLayoutPayload,
+} from "../../services/signage-layouts-api";
 import { getEffectiveProjectDuration } from "@openreel/core";
 import {
   Dialog,
@@ -53,6 +57,28 @@ function stripForSignageSave(project: Project): Project {
         waveformData: null,
       })),
     },
+  };
+}
+
+function buildSavePayload(project: Project): SaveLayoutPayload {
+  const width = project.settings.width;
+  const height = project.settings.height;
+  const timelineDuration = project.timeline.duration;
+  const canvasDuration = project.settings.playDuration ?? 0;
+  const duration =
+    timelineDuration > 0
+      ? timelineDuration
+      : canvasDuration > 0
+        ? canvasDuration
+        : timelineDuration;
+  return {
+    layoutJson: stripForSignageSave(project) as unknown as Record<string, unknown>,
+    isValid: true,
+    duration,
+    resolution: `${width}x${height}`,
+    resolutionWidth: width,
+    resolutionHeight: height,
+    orientation: width >= height ? "LANDSCAPE" : "PORTRAIT",
   };
 }
 
@@ -222,11 +248,8 @@ export const Toolbar: React.FC = () => {
     if (!signageLayoutId) return;
     setIsSavingLayout(true);
     try {
-      const currentProject = stripForSignageSave(useProjectStore.getState().getFullProject());
-      await saveSignageLayout(signageLayoutId, {
-        layoutJson: currentProject as unknown as Record<string, unknown>,
-        isValid: true,
-      });
+      const payload = buildSavePayload(useProjectStore.getState().getFullProject());
+      await saveSignageLayout(signageLayoutId, payload);
       toast.success("Layout saved", "Your changes were saved to the signage library.");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to save layout.";
@@ -240,11 +263,8 @@ export const Toolbar: React.FC = () => {
     if (!signageLayoutId) return;
     setIsPublishingLayout(true);
     try {
-      const currentProject = stripForSignageSave(useProjectStore.getState().getFullProject());
-      await saveSignageLayout(signageLayoutId, {
-        layoutJson: currentProject as unknown as Record<string, unknown>,
-        isValid: true,
-      });
+      const payload = buildSavePayload(useProjectStore.getState().getFullProject());
+      await saveSignageLayout(signageLayoutId, payload);
       await publishSignageLayout(signageLayoutId);
       toast.success("Layout published", "Layout is now live and available to devices.");
     } catch (err) {
