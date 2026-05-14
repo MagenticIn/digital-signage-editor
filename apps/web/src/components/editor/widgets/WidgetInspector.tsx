@@ -9,9 +9,16 @@ import {
   Star,
   ArrowRight,
   Hexagon,
+  Library as LibraryIcon,
 } from "lucide-react";
 import { useSignageWidgetStore } from "../../../stores/signage-widget-store";
 import * as pdfjs from "pdfjs-dist";
+import {
+  LibraryAssetPicker,
+  resolveLibraryAssetUrl,
+  type LibraryFilter,
+} from "../LibraryAssetPicker";
+import type { SignageMediaItem } from "../../../stores/signage-media-store";
 import type {
   AudioWidgetConfig,
   CalendarConfig,
@@ -48,6 +55,39 @@ const sectionClass = "space-y-2 rounded-lg border border-border p-3 bg-backgroun
 const labelClass = "text-[10px] text-text-secondary block mb-1";
 const smallBtnClass =
   "text-[10px] px-2 py-1 rounded border border-border text-text-secondary bg-background hover:bg-background-elevated";
+
+// Inline "Pick from Library" trigger used by Image/Video/Audio/PDF widgets to
+// replace local file uploads. Selecting an item fires onPick with the library
+// asset; the caller writes the URL into the widget config.
+const LibraryAssetField: React.FC<{
+  filter: LibraryFilter;
+  label?: string;
+  currentUrl?: string;
+  onPick: (item: SignageMediaItem) => void;
+}> = ({ filter, label = "Library asset", currentUrl, onPick }) => {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div>
+      <label className={labelClass}>{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center gap-2 px-2 py-1.5 text-[11px] rounded border border-border bg-background text-text-primary hover:border-primary/50 transition-colors"
+      >
+        <LibraryIcon size={12} className="text-text-muted" />
+        <span className="truncate">
+          {currentUrl ? "Change library asset" : "Pick from Library"}
+        </span>
+      </button>
+      <LibraryAssetPicker
+        open={open}
+        onOpenChange={setOpen}
+        filter={filter}
+        onSelect={onPick}
+      />
+    </div>
+  );
+};
 
 interface WidgetInspectorProps {
   widget: SignageWidget;
@@ -661,34 +701,36 @@ const PDFFields = ({
   onDurationChange: (duration: number) => void;
 }) => (
   <div className={sectionClass}>
-    <input
-      type="file"
-      accept=".pdf"
-      onChange={async (e) => {
-        const file = e.target.files?.[0] ?? null;
-        if (!file) {
-          onChange({ ...config, file: null, totalPages: 0 });
-          return;
-        }
-        const bytes = await file.arrayBuffer();
-        const doc = await pdfjs.getDocument({ data: bytes }).promise;
-        const totalPages = doc.numPages;
-        onChange({ ...config, file, totalPages });
-        onDurationChange(totalPages * Math.max(1, config.secondsPerPage));
-      }}
-    />
     <div>
-      <label className={labelClass}>File URL (for replay)</label>
+      <label className={labelClass}>File URL</label>
       <input
         className={inputClass}
         value={config.fileUrl ?? ""}
         onChange={(e) => onChange({ ...config, fileUrl: e.target.value || undefined })}
         placeholder="https://your-backend/file.pdf"
       />
-      <p className="text-[10px] text-text-muted mt-1">
-        Local file picks won't survive JSON export. Paste a hosted PDF URL here so the preview player can fetch it.
-      </p>
     </div>
+    <LibraryAssetField
+      filter="pdf"
+      label="or pick from library"
+      currentUrl={config.fileUrl}
+      onPick={async (item) => {
+        const url = resolveLibraryAssetUrl(item);
+        if (!url) return;
+        // Parse the PDF from URL to count pages so duration stays in sync.
+        let totalPages = config.totalPages || 0;
+        try {
+          const doc = await pdfjs.getDocument({ url }).promise;
+          totalPages = doc.numPages;
+        } catch (err) {
+          console.warn("[PDFFields] Failed to count pages for library PDF:", err);
+        }
+        onChange({ ...config, file: null, fileUrl: url, totalPages });
+        if (totalPages > 0) {
+          onDurationChange(totalPages * Math.max(1, config.secondsPerPage));
+        }
+      }}
+    />
     <div>
       <label className={labelClass}>Seconds per page</label>
       <input
@@ -729,9 +771,8 @@ const PDFFields = ({
 
 const PowerPointFields = ({ config, onChange }: { config: PowerPointConfig; onChange: (v: PowerPointConfig) => void }) => (
   <div className={sectionClass}>
-    <input type="file" accept=".pptx" onChange={(e) => onChange({ ...config, file: e.target.files?.[0] ?? null })} />
     <div>
-      <label className={labelClass}>PDF URL (for replay)</label>
+      <label className={labelClass}>PDF URL</label>
       <input
         className={inputClass}
         value={config.fileUrl ?? ""}
@@ -739,7 +780,9 @@ const PowerPointFields = ({ config, onChange }: { config: PowerPointConfig; onCh
         placeholder="https://your-backend/slides.pdf"
       />
       <p className="text-[10px] text-text-muted mt-1">
-        Upload a PDF rendition of the slideshow to your backend and paste its URL here for replay. The .pptx file picker is for local authoring only.
+        Paste the URL of a PDF rendition of your slideshow. The backend PPTX
+        converter isn't wired into the editor, so library/local PPTX picks
+        aren't supported here yet.
       </p>
     </div>
     <div>
@@ -1300,19 +1343,15 @@ const ImageFields = ({ config, onChange }: { config: ImageWidgetConfig; onChange
       <label className={labelClass}>Image URL</label>
       <input className={inputClass} value={config.imageUrl} onChange={(e) => onChange({ ...config, imageUrl: e.target.value })} placeholder="https://..." />
     </div>
-    <div>
-      <label className={labelClass}>or choose a local file</label>
-      <input
-        type="file"
-        accept="image/*"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          const url = URL.createObjectURL(file);
-          onChange({ ...config, imageUrl: url });
-        }}
-      />
-    </div>
+    <LibraryAssetField
+      filter="image"
+      label="or pick from library"
+      currentUrl={config.imageUrl}
+      onPick={(item) => {
+        const url = resolveLibraryAssetUrl(item);
+        if (url) onChange({ ...config, imageUrl: url });
+      }}
+    />
     <div>
       <label className={labelClass}>Object fit</label>
       <select className={inputClass} value={config.objectFit} onChange={(e) => onChange({ ...config, objectFit: e.target.value as ImageWidgetConfig["objectFit"] })}>
@@ -1330,19 +1369,15 @@ const VideoFields = ({ config, onChange }: { config: VideoWidgetConfig; onChange
       <label className={labelClass}>Video URL</label>
       <input className={inputClass} value={config.videoUrl} onChange={(e) => onChange({ ...config, videoUrl: e.target.value })} placeholder="https://..." />
     </div>
-    <div>
-      <label className={labelClass}>or choose a local file</label>
-      <input
-        type="file"
-        accept="video/*"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          const url = URL.createObjectURL(file);
-          onChange({ ...config, videoUrl: url });
-        }}
-      />
-    </div>
+    <LibraryAssetField
+      filter="video"
+      label="or pick from library"
+      currentUrl={config.videoUrl}
+      onPick={(item) => {
+        const url = resolveLibraryAssetUrl(item);
+        if (url) onChange({ ...config, videoUrl: url });
+      }}
+    />
     <div>
       <label className={labelClass}>Object fit</label>
       <select className={inputClass} value={config.objectFit} onChange={(e) => onChange({ ...config, objectFit: e.target.value as VideoWidgetConfig["objectFit"] })}>
@@ -1385,19 +1420,20 @@ const AudioFields = ({ config, onChange }: { config: AudioWidgetConfig; onChange
         <label className={labelClass}>Audio URL</label>
         <input className={inputClass} value={config.audioUrl} onChange={(e) => onChange({ ...config, audioUrl: e.target.value })} placeholder="https://..." />
       </div>
-      <div>
-        <label className={labelClass}>or choose a local file</label>
-        <input
-          type="file"
-          accept="audio/*"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            const url = URL.createObjectURL(file);
-            onChange({ ...config, audioUrl: url });
-          }}
-        />
-      </div>
+      <LibraryAssetField
+        filter="audio"
+        label="or pick from library"
+        currentUrl={config.audioUrl}
+        onPick={(item) => {
+          const url = resolveLibraryAssetUrl(item);
+          if (!url) return;
+          onChange({
+            ...config,
+            audioUrl: url,
+            title: config.title && config.title.length > 0 ? config.title : item.name,
+          });
+        }}
+      />
       <div>
         <label className={labelClass}>Title (optional)</label>
         <input

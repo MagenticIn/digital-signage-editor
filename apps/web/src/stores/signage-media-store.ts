@@ -104,16 +104,8 @@ export const useSignageMediaStore = create<SignageMediaState>()((set, get) => ({
         sortOrder: query.sortOrder ?? "desc",
       });
 
-      // Filter to only visual media (images/videos) for editor relevance
-      const visualItems = res.data.filter((item) => {
-        const t = (item.type ?? "").toLowerCase();
-        if (t.startsWith("video/") || t.startsWith("image/")) return true;
-        const name = `${item.name ?? ""} ${item.originalName ?? ""}`.toLowerCase();
-        return /\.(mp4|webm|mov|mkv|png|jpe?g|gif|webp|avif)(\?|$)/i.test(name);
-      });
-
       set({
-        items: visualItems,
+        items: res.data,
         page: res.meta.page,
         totalPages: Math.max(1, res.meta.total_pages),
         totalItems: res.meta.total,

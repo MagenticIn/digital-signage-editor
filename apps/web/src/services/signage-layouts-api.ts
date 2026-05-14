@@ -103,9 +103,10 @@ function getApiBase(): string | null {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
   const token = getToken();
-  // if (!base || !token) {
-  //   throw new Error("Signage backend not connected (missing JWT or API URL).");
-  // }
+  
+  if (!base || !token) {
+    throw new Error("Signage backend not connected (missing JWT or API URL).");
+  }
 
   const url = `${base}${path}`;
   const headers: Record<string, string> = {

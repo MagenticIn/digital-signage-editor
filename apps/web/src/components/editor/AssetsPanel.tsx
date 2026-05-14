@@ -4,7 +4,6 @@ import {
   Film,
   Music,
   Plus,
-  Upload,
   Trash2,
   Square,
   Circle,
@@ -19,7 +18,8 @@ import {
   LayoutGrid,
   Grid2x2,
   List,
-  // Cloud,
+  Cloud,
+  Library as LibraryIcon,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -34,8 +34,11 @@ import type { SignageWidgetType } from "../../types/widgets";
 import type { MediaItem } from "@openreel/core";
 import { AspectRatioMatchDialog } from "./dialogs/AspectRatioMatchDialog";
 import { SignageMediaLibraryTab } from "./SignageMediaLibraryTab";
+import { LibraryAssetPicker } from "./LibraryAssetPicker";
+import { resolveLibraryAssetUrl } from "./LibraryAssetPicker";
+import type { SignageMediaItem } from "../../stores/signage-media-store";
 import { toast } from "../../stores/notification-store";
-import { saveFileHandle, saveDirectoryHandle } from "../../services/media-storage";
+import { saveDirectoryHandle, saveFileHandle } from "../../services/media-storage";
 import {
   ScrollArea,
   ContextMenu,
@@ -519,22 +522,29 @@ const MediaThumbnail: React.FC<{
   );
 };
 
-const EmptyState: React.FC<{ onImport: () => void }> = ({ onImport }) => (
+const EmptyState: React.FC<{ onPickLibrary: () => void; connected: boolean }> = ({
+  onPickLibrary,
+  connected,
+}) => (
   <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
     <div className="w-16 h-16 rounded-2xl bg-background-tertiary border border-border flex items-center justify-center mb-4 shadow-inner">
-      <Upload size={24} className="text-text-muted" />
+      <Cloud size={24} className="text-text-muted" />
     </div>
     <p className="text-sm text-text-secondary mb-2 font-medium">
-      No media imported
+      No media in this project
     </p>
     <p className="text-xs text-text-muted mb-6">
-      Drag files here or click to import
+      {connected
+        ? "Pick from your library to add a clip."
+        : "Upload an asset to the library to add it here."}
     </p>
     <button
-      onClick={onImport}
-      className="px-4 py-2 bg-background-elevated hover:bg-background-tertiary border border-border text-text-primary text-xs font-medium rounded-lg transition-all hover:border-primary/50"
+      onClick={onPickLibrary}
+      disabled={!connected}
+      className="px-4 py-2 bg-background-elevated hover:bg-background-tertiary border border-border text-text-primary text-xs font-medium rounded-lg transition-all hover:border-primary/50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
     >
-      Import Media
+      <LibraryIcon size={13} />
+      Pick from Library
     </button>
   </div>
 );
@@ -547,14 +557,13 @@ const LoadingIndicator: React.FC<{ message: string }> = ({ message }) => (
 );
 
 export const AssetsPanel: React.FC = () => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTabRaw] = useState<
     "media" | "text" | "graphics" | "widgets" | "library"
   >(isSignageConnected() ? "library" : "media");
   const [generatingBackground, setGeneratingBackground] = useState<string | null>(null);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const signageConnected = useSignageMediaStore((s) => s.connected);
-  const signageUploadFile = useSignageMediaStore((s) => s.uploadFile);
 
   const setActiveTab = useCallback((tab: "media" | "text" | "graphics" | "widgets" | "library") => {
     setActiveTabRaw(tab);
@@ -577,7 +586,6 @@ export const AssetsPanel: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [isDragOver, setIsDragOver] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState("");
   const [showOnlyMissing, setShowOnlyMissing] = useState(false);
@@ -622,86 +630,47 @@ export const AssetsPanel: React.FC = () => {
     return matchesFilter;
   });
 
-  // Handle file import with loading state + dual-write to signage backend
-  const handleFileImport = useCallback(
-    async (files: FileList | null) => {
-      if (!files || files.length === 0) return;
+  // Pick an asset from the signage media library and add it as a project clip.
+  // Downloads the remote file once, then routes it through the same importMedia
+  // path used elsewhere so undo/redo, thumbnails, and IndexedDB caching work.
+  const handleLibraryPick = useCallback(
+    async (item: SignageMediaItem) => {
+      const fileUrl = resolveLibraryAssetUrl(item);
+      if (!fileUrl) {
+        toast.error("No file URL", "This library item has no downloadable file.");
+        return;
+      }
 
       setIsImporting(true);
-      const fileArray = Array.from(files);
-
+      setImportProgress(`Importing ${item.name}…`);
       try {
-        for (let i = 0; i < fileArray.length; i++) {
-          const file = fileArray[i];
-          setImportProgress(
-            `Importing ${file.name} (${i + 1}/${fileArray.length})...`,
-          );
+        const response = await fetch(fileUrl, { mode: "cors", credentials: "omit" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
 
-          const result = await importMedia(file);
-
-          // Dual-write: also upload to the signage backend when connected
-          if (result.success && isSignageConnected()) {
-            setImportProgress(`Uploading ${file.name} to media library...`);
-            signageUploadFile(file, file.name).catch((err) => {
-              console.warn("[AssetsPanel] Backend upload failed (non-blocking):", err);
-            });
-          }
-
-          // If it's a video with audio, extract audio to separate track
-          if (result.success && file.type.startsWith("video/")) {
-            setImportProgress(`Extracting audio from ${file.name}...`);
-            // Audio extraction is handled by the importMedia function
-            // The audio track is created automatically when adding to timeline
-          }
+        let filename = item.originalName ?? item.name;
+        if (!/\.\w+$/.test(filename)) {
+          const ext = item.type?.split("/")[1]?.split(";")[0] ?? "bin";
+          filename = `${filename}.${ext}`;
         }
-      } catch (error) {
-        console.error("Import failed:", error);
+        const file = new File([blob], filename, { type: item.type || blob.type });
+
+        const result = await importMedia(file, fileUrl);
+        if (!result.success) {
+          toast.error("Import failed", result.error?.message ?? "Unknown error");
+        }
+      } catch (e) {
+        toast.error(
+          "Import failed",
+          e instanceof Error ? e.message : "Could not download the file.",
+        );
       } finally {
         setIsImporting(false);
         setImportProgress("");
       }
     },
-    [importMedia, signageUploadFile],
+    [importMedia],
   );
-
-  // Handle drag and drop import — capture FileSystemFileHandle for each dropped file
-  const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-
-      // Try to capture handles before files are consumed
-      if ("getAsFileSystemHandle" in DataTransferItem.prototype) {
-        const handlePromises = Array.from(e.dataTransfer.items)
-          .filter((item) => item.kind === "file")
-          .map(async (item) => {
-            try {
-              const handle = await (item as DataTransferItem & { getAsFileSystemHandle(): Promise<FileSystemHandle> }).getAsFileSystemHandle();
-              if (handle.kind === "file") {
-                const fileHandle = handle as FileSystemFileHandle;
-                const file = await fileHandle.getFile();
-                await saveFileHandle(file.name, file.size, fileHandle);
-              }
-            } catch {
-              // Ignore — handle capture is best-effort
-            }
-          });
-        await Promise.all(handlePromises);
-      }
-
-      handleFileImport(e.dataTransfer.files);
-    },
-    [handleFileImport],
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragOver(false);
-  }, []);
 
   // Handle media item selection
   const handleSelectItem = useCallback(
@@ -877,8 +846,8 @@ export const AssetsPanel: React.FC = () => {
     [addMediaToTimeline],
   );
 
-  const triggerFileInput = useCallback(() => {
-    fileInputRef.current?.click();
+  const openLibraryPicker = useCallback(() => {
+    setShowLibraryPicker(true);
   }, []);
 
   const handleImportBackground = useCallback(
@@ -1081,15 +1050,8 @@ export const AssetsPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="video/*,audio/*,image/*"
-        onChange={(e) => handleFileImport(e.target.files)}
-        className="hidden"
-      />
+      {/* Hidden file input — for custom Graphics-tab backgrounds only.
+          Project media is added exclusively via the Library picker. */}
       <input
         ref={backgroundInputRef}
         type="file"
@@ -1100,15 +1062,13 @@ export const AssetsPanel: React.FC = () => {
 
       {/* Content based on active tab */}
       {activeTab === "media" && (
-        <ScrollArea
-          className={`flex-1 ${isDragOver ? "bg-primary/5" : ""}`}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-        >
+        <ScrollArea className="flex-1">
           <div className="px-5 pb-5">
             {filteredItems.length === 0 ? (
-              <EmptyState onImport={triggerFileInput} />
+              <EmptyState
+                onPickLibrary={openLibraryPicker}
+                connected={signageConnected}
+              />
             ) : (
               <div className={
                 mediaViewMode === "list"
@@ -1130,39 +1090,36 @@ export const AssetsPanel: React.FC = () => {
                     onAddToTimeline={() => handleAddToTimeline(item)}
                   />
                 ))}
-                {/* Add more media tile */}
+                {/* Pick-from-Library tile (replaces the legacy local-upload tile) */}
                 {mediaViewMode === "list" ? (
                   <button
-                    onClick={triggerFileInput}
-                    className="flex items-center gap-3 px-2 py-1.5 rounded-lg border-2 border-dashed border-border hover:border-text-secondary cursor-pointer transition-all group"
+                    onClick={openLibraryPicker}
+                    disabled={!signageConnected}
+                    className="flex items-center gap-3 px-2 py-1.5 rounded-lg border-2 border-dashed border-border hover:border-text-secondary cursor-pointer transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="w-12 h-8 rounded bg-background-tertiary flex items-center justify-center flex-shrink-0">
-                      <Upload size={14} className="text-text-muted group-hover:text-text-secondary transition-colors" />
+                      <LibraryIcon size={14} className="text-text-muted group-hover:text-text-secondary transition-colors" />
                     </div>
-                    <span className="text-[11px] text-text-muted group-hover:text-text-secondary transition-colors font-medium">Add media</span>
+                    <span className="text-[11px] text-text-muted group-hover:text-text-secondary transition-colors font-medium">
+                      Pick from Library
+                    </span>
                   </button>
                 ) : (
                   <div className="flex flex-col">
                     <button
-                      onClick={triggerFileInput}
-                      className="aspect-video bg-background-tertiary rounded-lg border-2 border-dashed border-border hover:border-text-secondary relative flex items-center justify-center cursor-pointer transition-all overflow-hidden shadow-sm group"
+                      onClick={openLibraryPicker}
+                      disabled={!signageConnected}
+                      className="aspect-video bg-background-tertiary rounded-lg border-2 border-dashed border-border hover:border-text-secondary relative flex items-center justify-center cursor-pointer transition-all overflow-hidden shadow-sm group disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="flex flex-col items-center gap-1.5">
-                        <Upload size={mediaViewMode === "small" ? 16 : 20} className="text-text-muted group-hover:text-text-secondary transition-colors" />
-                        <span className="text-[10px] text-text-muted group-hover:text-text-secondary transition-colors">Add media</span>
+                        <LibraryIcon size={mediaViewMode === "small" ? 16 : 20} className="text-text-muted group-hover:text-text-secondary transition-colors" />
+                        <span className="text-[10px] text-text-muted group-hover:text-text-secondary transition-colors">
+                          Pick from Library
+                        </span>
                       </div>
                     </button>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* Drop zone indicator */}
-            {isDragOver && (
-              <div className="absolute inset-4 border-2 border-dashed border-primary rounded-xl flex items-center justify-center bg-primary/5 pointer-events-none z-50 backdrop-blur-sm">
-                <div className="text-primary text-sm font-bold bg-background-secondary px-4 py-2 rounded-full shadow-lg">
-                  Drop files to import
-                </div>
               </div>
             )}
           </div>
@@ -1553,7 +1510,13 @@ export const AssetsPanel: React.FC = () => {
         />
       )}
 
-
+      <LibraryAssetPicker
+        open={showLibraryPicker}
+        onOpenChange={setShowLibraryPicker}
+        filter="all"
+        title="Pick from Library"
+        onSelect={(item) => void handleLibraryPick(item)}
+      />
     </div>
   );
 };
