@@ -540,8 +540,7 @@ const EmptyState: React.FC<{ onPickLibrary: () => void; connected: boolean }> = 
     </p>
     <button
       onClick={onPickLibrary}
-      disabled={!connected}
-      className="px-4 py-2 bg-background-elevated hover:bg-background-tertiary border border-border text-text-primary text-xs font-medium rounded-lg transition-all hover:border-primary/50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+      className="px-4 py-2 bg-background-elevated hover:bg-background-tertiary border border-border text-text-primary text-xs font-medium rounded-lg transition-all hover:border-primary/50 flex items-center gap-1.5"
     >
       <LibraryIcon size={13} />
       Pick from Library
@@ -1094,8 +1093,7 @@ export const AssetsPanel: React.FC = () => {
                 {mediaViewMode === "list" ? (
                   <button
                     onClick={openLibraryPicker}
-                    disabled={!signageConnected}
-                    className="flex items-center gap-3 px-2 py-1.5 rounded-lg border-2 border-dashed border-border hover:border-text-secondary cursor-pointer transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-3 px-2 py-1.5 rounded-lg border-2 border-dashed border-border hover:border-text-secondary cursor-pointer transition-all group"
                   >
                     <div className="w-12 h-8 rounded bg-background-tertiary flex items-center justify-center flex-shrink-0">
                       <LibraryIcon size={14} className="text-text-muted group-hover:text-text-secondary transition-colors" />
@@ -1108,8 +1106,7 @@ export const AssetsPanel: React.FC = () => {
                   <div className="flex flex-col">
                     <button
                       onClick={openLibraryPicker}
-                      disabled={!signageConnected}
-                      className="aspect-video bg-background-tertiary rounded-lg border-2 border-dashed border-border hover:border-text-secondary relative flex items-center justify-center cursor-pointer transition-all overflow-hidden shadow-sm group disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="aspect-video bg-background-tertiary rounded-lg border-2 border-dashed border-border hover:border-text-secondary relative flex items-center justify-center cursor-pointer transition-all overflow-hidden shadow-sm group"
                     >
                       <div className="flex flex-col items-center gap-1.5">
                         <LibraryIcon size={mediaViewMode === "small" ? 16 : 20} className="text-text-muted group-hover:text-text-secondary transition-colors" />
