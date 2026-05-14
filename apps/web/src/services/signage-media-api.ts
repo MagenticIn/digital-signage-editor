@@ -109,6 +109,7 @@ async function apiFetch<T>(
 ): Promise<T> {
   const base = getApiBase();
   const token = getToken();
+  
   if (!base || !token) {
     throw new Error("Signage backend not connected (missing JWT or API URL).");
   }

@@ -332,7 +332,9 @@ export const EditorInterface: React.FC = () => {
         <Toolbar />
       )}
 
-      {/* Workspace Area — preview flex-1 grows when side panels are hidden */}
+      {/* Workspace Area — AssetsPanel and InspectorPanel run full height; the
+          middle column stacks Preview on top of Timeline so the timeline starts
+          where the preview starts (right edge of AssetsPanel). */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {(panels.mediaLibrary?.visible ?? true) ? (
           <PanelErrorBoundary name="Assets Panel">
@@ -340,9 +342,40 @@ export const EditorInterface: React.FC = () => {
           </PanelErrorBoundary>
         ) : null}
 
-        <PanelErrorBoundary name="Preview">
-          <Preview />
-        </PanelErrorBoundary>
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          <PanelErrorBoundary name="Preview">
+            <Preview />
+          </PanelErrorBoundary>
+
+          {timelineVisible ? (
+            <div
+              className="h-1 bg-border hover:bg-primary/50 cursor-row-resize transition-colors z-10 relative group shrink-0"
+              onMouseDown={handleMouseDown}
+            >
+              <div className="absolute inset-x-0 -top-1 -bottom-1 bg-transparent" />
+            </div>
+          ) : null}
+
+          {panels.audioMixer?.visible && (
+            <PanelErrorBoundary name="Audio Mixer">
+              <AudioMixer
+                visible
+                onClose={() => setPanelVisible("audioMixer", false)}
+              />
+            </PanelErrorBoundary>
+          )}
+
+          {timelineVisible ? (
+            <div
+              style={{ height: timelineHeight }}
+              className="shrink-0 flex flex-col min-h-0"
+            >
+              <PanelErrorBoundary name="Timeline">
+                <Timeline />
+              </PanelErrorBoundary>
+            </div>
+          ) : null}
+        </div>
 
         {(panels.inspector?.visible ?? true) ? (
           <PanelErrorBoundary name="Inspector">
@@ -366,36 +399,6 @@ export const EditorInterface: React.FC = () => {
           </PanelErrorBoundary>
         )}
       </div>
-
-      {timelineVisible ? (
-        <div
-          className="h-1 bg-border hover:bg-primary/50 cursor-row-resize transition-colors z-10 relative group shrink-0"
-          onMouseDown={handleMouseDown}
-        >
-          <div className="absolute inset-x-0 -top-1 -bottom-1 bg-transparent" />
-        </div>
-      ) : null}
-
-      {/* Audio Mixer (when open) */}
-      {panels.audioMixer?.visible && (
-        <PanelErrorBoundary name="Audio Mixer">
-          <AudioMixer
-            visible
-            onClose={() => setPanelVisible("audioMixer", false)}
-          />
-        </PanelErrorBoundary>
-      )}
-
-      {timelineVisible ? (
-        <div
-          style={{ height: timelineHeight }}
-          className="shrink-0 flex flex-col min-h-0"
-        >
-          <PanelErrorBoundary name="Timeline">
-            <Timeline />
-          </PanelErrorBoundary>
-        </div>
-      ) : null}
 
       <KeyboardShortcutsOverlay
         isOpen={showShortcutsOverlay}

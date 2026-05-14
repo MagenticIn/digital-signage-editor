@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Cloud,
   Search,
@@ -10,14 +11,9 @@ import {
   ChevronRight,
   RefreshCw,
   AlertTriangle,
+  X,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  ScrollArea,
-} from "@openreel/ui";
+import { ScrollArea } from "@openreel/ui";
 import {
   useSignageMediaStore,
   resolveSignageAssetUrl,
@@ -51,10 +47,10 @@ function matchesFilter(item: SignageMediaItem, filter: LibraryFilter): boolean {
 
 function iconFor(type: string | null | undefined): React.ReactNode {
   const t = (type ?? "").toLowerCase();
-  if (t.startsWith("video/")) return <Film size={24} className="text-status-info/60" />;
-  if (t.startsWith("audio/")) return <Music size={24} className="text-purple-400/70" />;
-  if (t === "application/pdf") return <FileText size={24} className="text-red-400/70" />;
-  return <ImageIcon size={24} className="text-primary/60" />;
+  if (t.startsWith("video/")) return <Film size={28} className="text-sky-400" />;
+  if (t.startsWith("audio/")) return <Music size={28} className="text-purple-400" />;
+  if (t === "application/pdf") return <FileText size={28} className="text-red-400" />;
+  return <ImageIcon size={28} className="text-emerald-400" />;
 }
 
 /** Resolve a library item's playback URL. Prefers fileUrl over url. */
@@ -69,18 +65,20 @@ const Thumbnail: React.FC<{
   const thumb = resolveSignageAssetUrl(item.thumbnailUrl);
   const t = (item.type ?? "").toLowerCase();
   const isImage = t.startsWith("image/");
+  const previewUrl = isImage ? resolveLibraryAssetUrl(item) : null;
 
   return (
     <button
+      type="button"
       onClick={onPick}
-      className="text-left group flex flex-col rounded-lg overflow-hidden border border-border hover:border-primary/60 transition-colors"
+      className="text-left group flex flex-col rounded-lg overflow-hidden border border-zinc-700 hover:border-emerald-500 transition-colors bg-zinc-800"
     >
-      <div className="aspect-video bg-background-tertiary relative flex items-center justify-center">
+      <div className="aspect-video bg-zinc-900 relative flex items-center justify-center overflow-hidden">
         {thumb ? (
           <img src={thumb} alt={item.name} className="w-full h-full object-cover" />
-        ) : isImage ? (
+        ) : previewUrl ? (
           <img
-            src={resolveLibraryAssetUrl(item)}
+            src={previewUrl}
             alt={item.name}
             className="w-full h-full object-cover"
             onError={(e) => {
@@ -90,22 +88,17 @@ const Thumbnail: React.FC<{
         ) : (
           iconFor(item.type)
         )}
-        {!thumb && !isImage && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            {iconFor(item.type)}
-          </div>
-        )}
         {item.durationSeconds != null && item.durationSeconds > 0 && (
           <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 rounded text-[9px] text-white font-mono">
             {Math.round(item.durationSeconds)}s
           </div>
         )}
       </div>
-      <div className="px-2 py-1.5 bg-background-secondary">
-        <div className="text-[11px] font-medium text-text-primary truncate" title={item.name}>
+      <div className="px-2 py-1.5">
+        <div className="text-[11px] font-medium text-zinc-100 truncate" title={item.name}>
           {item.name}
         </div>
-        <div className="text-[9px] text-text-muted truncate">{item.type}</div>
+        <div className="text-[9px] text-zinc-400 truncate">{item.type}</div>
       </div>
     </button>
   );
@@ -143,6 +136,15 @@ export const LibraryAssetPicker: React.FC<LibraryAssetPickerProps> = ({
 
   useEffect(() => {
     if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOpenChange(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onOpenChange]);
+
+  useEffect(() => {
+    if (!open) return;
     const t = setTimeout(() => {
       if (searchInput.trim() !== search) setSearch(searchInput.trim());
     }, 300);
@@ -162,44 +164,62 @@ export const LibraryAssetPicker: React.FC<LibraryAssetPickerProps> = ({
     [onSelect, onOpenChange],
   );
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl w-[90vw] max-h-[80vh] p-0 flex flex-col bg-background-secondary border-border">
-        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
-          <DialogTitle className="text-base font-semibold text-text-primary">
-            {title ?? FILTER_LABEL[filter]}
-          </DialogTitle>
-          <div className="flex items-center gap-2 mt-3">
-            <div className="relative flex-1">
-              <Search
-                size={14}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
-              />
-              <input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search library…"
-                className="w-full h-8 pl-8 pr-3 text-xs bg-background-tertiary border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary/50"
-              />
+  if (!open) return null;
+  if (typeof document === "undefined") return null;
+
+  const modal = (
+    <div
+      className="fixed inset-0 z-[2147483000] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={() => onOpenChange(false)}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[90vw] max-w-3xl max-h-[80vh] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl flex flex-col overflow-hidden text-zinc-100"
+      >
+        <div className="px-5 pt-4 pb-3 border-b border-zinc-800 flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <h2 className="text-base font-semibold text-zinc-100">
+              {title ?? FILTER_LABEL[filter]}
+            </h2>
+            <div className="flex items-center gap-2 mt-3">
+              <div className="relative flex-1">
+                <Search
+                  size={14}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                />
+                <input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search library…"
+                  className="w-full h-8 pl-8 pr-3 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500/60"
+                />
+              </div>
+              <button
+                onClick={() => void refresh()}
+                disabled={loading}
+                title="Refresh"
+                className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              </button>
             </div>
-            <button
-              onClick={() => void refresh()}
-              disabled={loading}
-              title="Refresh"
-              className="p-1.5 text-text-muted hover:text-text-secondary rounded-lg hover:bg-background-tertiary transition-colors"
-            >
-              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            </button>
           </div>
-        </DialogHeader>
+          <button
+            onClick={() => onOpenChange(false)}
+            className="p-1 -mr-1 text-zinc-400 hover:text-zinc-200 rounded hover:bg-zinc-800 transition-colors"
+            title="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
 
         {!connected ? (
           <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 text-center">
-            <Cloud size={28} className="text-text-muted mb-3" />
-            <p className="text-sm text-text-secondary mb-1 font-medium">
+            <Cloud size={28} className="text-zinc-500 mb-3" />
+            <p className="text-sm text-zinc-300 mb-1 font-medium">
               Not connected to media library
             </p>
-            <p className="text-xs text-text-muted">
+            <p className="text-xs text-zinc-500">
               Open this editor from the Digital Signage dashboard to enable
               cloud media.
             </p>
@@ -217,18 +237,18 @@ export const LibraryAssetPicker: React.FC<LibraryAssetPickerProps> = ({
           <div className="px-5 py-4">
             {loading && filteredItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
-                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
-                <p className="text-xs text-text-muted">Loading library…</p>
+                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
+                <p className="text-xs text-zinc-400">Loading library…</p>
               </div>
             ) : filteredItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-background-tertiary border border-border flex items-center justify-center mb-3 shadow-inner">
-                  <Cloud size={20} className="text-text-muted" />
+                <div className="w-14 h-14 rounded-2xl bg-zinc-800 border border-zinc-700 flex items-center justify-center mb-3 shadow-inner">
+                  <Cloud size={20} className="text-zinc-500" />
                 </div>
-                <p className="text-xs text-text-secondary mb-1 font-medium">
+                <p className="text-xs text-zinc-300 mb-1 font-medium">
                   No assets to show
                 </p>
-                <p className="text-[10px] text-text-muted">
+                <p className="text-[10px] text-zinc-500">
                   Upload an asset to the library to add it here.
                 </p>
               </div>
@@ -247,29 +267,31 @@ export const LibraryAssetPicker: React.FC<LibraryAssetPickerProps> = ({
         </ScrollArea>
 
         {totalPages > 1 && connected && (
-          <div className="flex items-center justify-center gap-3 px-5 py-2 border-t border-border">
+          <div className="flex items-center justify-center gap-3 px-5 py-2 border-t border-zinc-800">
             <button
               onClick={() => setPage(page - 1)}
               disabled={page <= 1}
-              className="p-1.5 rounded-lg hover:bg-background-tertiary text-text-muted disabled:opacity-30 transition-colors"
+              className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 disabled:opacity-30 transition-colors"
             >
               <ChevronLeft size={14} />
             </button>
-            <span className="text-[10px] text-text-secondary">
+            <span className="text-[10px] text-zinc-300">
               Page {page} of {totalPages}
             </span>
             <button
               onClick={() => setPage(page + 1)}
               disabled={page >= totalPages}
-              className="p-1.5 rounded-lg hover:bg-background-tertiary text-text-muted disabled:opacity-30 transition-colors"
+              className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 disabled:opacity-30 transition-colors"
             >
               <ChevronRight size={14} />
             </button>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
+
+  return createPortal(modal, document.body);
 };
 
 export default LibraryAssetPicker;
