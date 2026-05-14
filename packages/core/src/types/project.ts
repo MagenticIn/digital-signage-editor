@@ -62,6 +62,10 @@ export interface MediaItem {
   readonly filmstripThumbnails?: FilmstripThumbnail[];
   readonly isPlaceholder?: boolean;
   readonly originalUrl?: string;
+  /** Snapshot of the signage-media library entry this item was sourced from.
+   *  Persisted in saved JSON so downstream tooling (backend, replayer) can
+   *  reconcile the clip with its catalog entry even if `originalUrl` rotates. */
+  readonly libraryMedia?: LibraryMediaRef;
   /** File hint stored in JSON for cross-session/cross-machine asset matching */
   readonly sourceFile?: { name: string; size: number; lastModified: number; folder?: string };
 
@@ -76,6 +80,29 @@ export interface MediaItem {
   readonly widgetConfig?: Record<string, unknown>;
   /** Widget canvas placement in design-space pixels — same shape as the old SignageWidget.layout. */
   readonly widgetLayout?: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * JSON-safe snapshot of a signage-media library entry. Persisted on
+ * `MediaItem.libraryMedia` (when an asset was picked into the AssetsPanel
+ * via the library) and on the relevant widget `config.libraryMedia` (when
+ * picked directly from a widget inspector). Carries the persistable fields
+ * of `SignageMediaItem` so backend / replayer / sync tooling can reconcile
+ * the asset with its library catalog entry.
+ */
+export interface LibraryMediaRef {
+  readonly id: string;
+  readonly name: string;
+  readonly originalName: string | null;
+  readonly storageKey: string | null;
+  readonly source: "UPLOAD" | "URL";
+  /** MIME-ish type string from the library entry (e.g. "image/png"). */
+  readonly mimeType: string;
+  readonly durationSeconds: number | null;
+  readonly thumbnailUrl: string | null;
+  readonly fileUrl: string | null;
+  /** URL we resolved via `resolveLibraryAssetUrl` at pick time. */
+  readonly resolvedUrl: string;
 }
 
 /** Thumbnail for filmstrip display in timeline */

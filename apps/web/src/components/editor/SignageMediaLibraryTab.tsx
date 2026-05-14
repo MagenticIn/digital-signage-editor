@@ -19,6 +19,7 @@ import {
 } from "../../stores/signage-media-store";
 import type { SignageMediaItem } from "../../stores/signage-media-store";
 import { useProjectStore } from "../../stores/project-store";
+import { toLibraryMediaRef } from "./LibraryAssetPicker";
 import { toast } from "../../stores/notification-store";
 import { ScrollArea } from "@openreel/ui";
 
@@ -264,7 +265,7 @@ export const SignageMediaLibraryTab: React.FC = () => {
           type: item.type || blob.type,
         });
 
-        const result = await importMedia(file, fileUrl);
+        const result = await importMedia(file, fileUrl, toLibraryMediaRef(item, fileUrl));
         if (result.success) {
           toast.success(
             "Imported from library",

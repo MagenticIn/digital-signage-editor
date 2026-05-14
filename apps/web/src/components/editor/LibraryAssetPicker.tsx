@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { ScrollArea } from "@openreel/ui";
+import type { LibraryMediaRef } from "@openreel/core";
 import {
   useSignageMediaStore,
   resolveSignageAssetUrl,
@@ -39,8 +40,12 @@ const FILTER_LABEL: Record<LibraryFilter, string> = {
 };
 
 function matchesFilter(item: SignageMediaItem, filter: LibraryFilter): boolean {
-  if (filter === "all") return true;
   const t = (item.type ?? "").toLowerCase();
+  if (filter === "all") {
+    // AssetsPanel media tab: only image / video / audio. PDFs (and any other
+    // MIME types) are excluded from the catch-all picker.
+    return t.startsWith("image/") || t.startsWith("video/") || t.startsWith("audio/");
+  }
   if (filter === "pdf") return t === "application/pdf";
   return t.startsWith(`${filter}/`);
 }
@@ -53,9 +58,49 @@ function iconFor(type: string | null | undefined): React.ReactNode {
   return <ImageIcon size={28} className="text-emerald-400" />;
 }
 
-/** Resolve a library item's playback URL. Prefers fileUrl over url. */
+const MEDIA_FILES_PATH = "/api/v1/media-files";
+
+/**
+ * Resolve a library item's playback URL. Strategy:
+ *  - UPLOAD-sourced items: authoritative path is `/api/v1/media-files/<storageKey>`.
+ *    The backend serves the file at that route regardless of what `fileUrl` says.
+ *  - URL-sourced items: trust `url` (the user-supplied URL), then `fileUrl`,
+ *    then storageKey as a last-resort safety net.
+ */
 export function resolveLibraryAssetUrl(item: SignageMediaItem): string {
-  return resolveSignageAssetUrl(item.fileUrl ?? item.url) ?? "";
+  if (item.source === "UPLOAD" && item.storageKey) {
+    return resolveSignageAssetUrl(`${MEDIA_FILES_PATH}/${item.storageKey}`) ?? "";
+  }
+  return (
+    resolveSignageAssetUrl(item.url)
+    ?? resolveSignageAssetUrl(item.fileUrl)
+    ?? (item.storageKey
+      ? resolveSignageAssetUrl(`${MEDIA_FILES_PATH}/${item.storageKey}`) ?? ""
+      : "")
+  );
+}
+
+/**
+ * Snapshot the persistable fields of a SignageMediaItem into a JSON-safe
+ * `LibraryMediaRef`. Use this when wiring a library pick into a saved payload
+ * (widget config or MediaItem) so the catalog metadata round-trips.
+ */
+export function toLibraryMediaRef(
+  item: SignageMediaItem,
+  resolvedUrl: string,
+): LibraryMediaRef {
+  return {
+    id: item.id,
+    name: item.name,
+    originalName: item.originalName,
+    storageKey: item.storageKey,
+    source: item.source,
+    mimeType: item.type,
+    durationSeconds: item.durationSeconds,
+    thumbnailUrl: item.thumbnailUrl,
+    fileUrl: item.fileUrl,
+    resolvedUrl,
+  };
 }
 
 const Thumbnail: React.FC<{

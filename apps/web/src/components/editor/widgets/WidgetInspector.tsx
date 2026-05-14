@@ -16,6 +16,7 @@ import * as pdfjs from "pdfjs-dist";
 import {
   LibraryAssetPicker,
   resolveLibraryAssetUrl,
+  toLibraryMediaRef,
   type LibraryFilter,
 } from "../LibraryAssetPicker";
 import type { SignageMediaItem } from "../../../stores/signage-media-store";
@@ -725,7 +726,13 @@ const PDFFields = ({
         } catch (err) {
           console.warn("[PDFFields] Failed to count pages for library PDF:", err);
         }
-        onChange({ ...config, file: null, fileUrl: url, totalPages });
+        onChange({
+          ...config,
+          file: null,
+          fileUrl: url,
+          totalPages,
+          libraryMedia: toLibraryMediaRef(item, url),
+        });
         if (totalPages > 0) {
           onDurationChange(totalPages * Math.max(1, config.secondsPerPage));
         }
@@ -1349,7 +1356,7 @@ const ImageFields = ({ config, onChange }: { config: ImageWidgetConfig; onChange
       currentUrl={config.imageUrl}
       onPick={(item) => {
         const url = resolveLibraryAssetUrl(item);
-        if (url) onChange({ ...config, imageUrl: url });
+        if (url) onChange({ ...config, imageUrl: url, libraryMedia: toLibraryMediaRef(item, url) });
       }}
     />
     <div>
@@ -1375,7 +1382,7 @@ const VideoFields = ({ config, onChange }: { config: VideoWidgetConfig; onChange
       currentUrl={config.videoUrl}
       onPick={(item) => {
         const url = resolveLibraryAssetUrl(item);
-        if (url) onChange({ ...config, videoUrl: url });
+        if (url) onChange({ ...config, videoUrl: url, libraryMedia: toLibraryMediaRef(item, url) });
       }}
     />
     <div>
@@ -1431,6 +1438,7 @@ const AudioFields = ({ config, onChange }: { config: AudioWidgetConfig; onChange
             ...config,
             audioUrl: url,
             title: config.title && config.title.length > 0 ? config.title : item.name,
+            libraryMedia: toLibraryMediaRef(item, url),
           });
         }}
       />

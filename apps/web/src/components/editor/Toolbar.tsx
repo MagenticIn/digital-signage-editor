@@ -46,33 +46,152 @@ import {
 } from "@openreel/ui";
 import type { Project } from "@openreel/core";
 
-function stripForSignageSave(project: Project): Project {
+/**
+ * Canonical editor-state payload — the single source of truth shipped by both
+ * the Download Editor State JSON button and the Save / Publish PATCH. Reads
+ * live store state directly (no React hooks), so it can be called from event
+ * handlers without re-binding to component lifecycle.
+ *
+ * Guarantees on the returned object:
+ *  - `project.mediaLibrary.items[]` have `blob` / `fileHandle` / `waveformData`
+ *    nulled out, so the result is JSON-safe.
+ *  - `project.timeline.tracks` carries synthesized widget tracks (one per
+ *    signage widget) appended after real media tracks — replayers iterating
+ *    tracks see widgets the same way they see clips.
+ *  - `project.settings` has every optional field materialized with a default.
+ *  - `signageWidgets`, `effectiveDuration`, `timeline` (UI state) and `ui`
+ *    (panel state) are present at the top level for replay fidelity.
+ */
+function buildFullEditorStatePayload(): Record<string, unknown> {
+  // Base the snapshot on getFullProject() (not the bare store project),
+  // so engine-held text / shape / SVG / sticker clips are included.
+  const rawProject = useProjectStore.getState().getFullProject();
+  const rawWidgets = useSignageWidgetStore.getState().widgets;
+  const signageWidgets = rawWidgets.map(migrateWidget);
+  const autoDuration = getEffectiveProjectDuration(rawProject);
+  const widgetMaxEnd = signageWidgets.reduce(
+    (m, w) => Math.max(m, w.startTime + w.duration),
+    0,
+  );
+  const effectiveDuration = Math.max(autoDuration, widgetMaxEnd, 0);
+
+  // JSON-safe media library: drop runtime-only fields.
+  const sanitizedMediaItems = rawProject.mediaLibrary.items.map((item) => ({
+    ...item,
+    blob: null,
+    fileHandle: null,
+    waveformData: null,
+  }));
+
+  // Synthesize timeline tracks from widgets so downstream replayers that
+  // iterate `tracks[]` see widgets the same way they see media clips.
+  // `mediaId` sentinel `widget:<id>` + embedded `widget` payload give the
+  // replayer everything it needs to render.
+  const widgetTracks = signageWidgets.map((w) => {
+    const trackId = `widget-track-${w.id}`;
+    const layout = w.layout ?? { x: 0, y: 0, width: 360, height: 220 };
+    return {
+      id: trackId,
+      type: "graphics" as const,
+      name: `${w.type[0].toUpperCase()}${w.type.slice(1)} Widget`,
+      clips: [
+        {
+          id: `widget-clip-${w.id}`,
+          mediaId: `widget:${w.id}`,
+          trackId,
+          startTime: w.startTime,
+          duration: w.duration,
+          inPoint: 0,
+          outPoint: w.duration,
+          effects: [],
+          audioEffects: [],
+          transform: {
+            position: { x: layout.x, y: layout.y },
+            scale: { x: 1, y: 1 },
+            rotation: 0,
+            anchor: { x: 0.5, y: 0.5 },
+            opacity: 1,
+          },
+          volume: 1,
+          keyframes: [],
+          widget: {
+            type: w.type,
+            config: w.config,
+            layout: w.layout,
+            locked: w.locked ?? false,
+            hidden: w.hidden ?? false,
+          },
+        },
+      ],
+      transitions: [],
+      locked: w.locked ?? false,
+      hidden: w.hidden ?? false,
+      muted: false,
+      solo: false,
+    };
+  });
+
+  const normalizedProject = {
+    ...rawProject,
+    signageWidgets,
+    mediaLibrary: { items: sanitizedMediaItems },
+    settings: {
+      ...rawProject.settings,
+      backgroundColor: rawProject.settings.backgroundColor ?? "rgba(0,0,0,1)",
+      playDuration: rawProject.settings.playDuration ?? effectiveDuration,
+      placeholderText:
+        rawProject.settings.placeholderText ?? "Import media to get started",
+      placeholderTextColor:
+        rawProject.settings.placeholderTextColor ?? "rgba(161,161,170,1)",
+      placeholderFontSize: rawProject.settings.placeholderFontSize ?? 24,
+    },
+    timeline: {
+      ...rawProject.timeline,
+      tracks: [
+        ...rawProject.timeline.tracks,
+        ...(widgetTracks as unknown as typeof rawProject.timeline.tracks),
+      ],
+      duration: Math.max(rawProject.timeline.duration, widgetMaxEnd),
+    },
+  };
+
   return {
-    ...project,
-    mediaLibrary: {
-      items: project.mediaLibrary.items.map((item) => ({
-        ...item,
-        blob: null,
-        fileHandle: null,
-        waveformData: null,
-      })),
+    exportedAt: new Date().toISOString(),
+    project: normalizedProject,
+    signageWidgets,
+    effectiveDuration,
+    timeline: {
+      playheadPosition: useTimelineStore.getState().playheadPosition,
+      playbackState: useTimelineStore.getState().playbackState,
+      pixelsPerSecond: useTimelineStore.getState().pixelsPerSecond,
+    },
+    ui: {
+      selectedItems: useUIStore.getState().selectedItems,
+      panels: useUIStore.getState().panels,
     },
   };
 }
 
 function buildSavePayload(project: Project): SaveLayoutPayload {
-  const width = project.settings.width;
-  const height = project.settings.height;
+  // Backend Zod schema requires integer durations and dimensions
+  // (z.number().int()); timeline/playDuration are floats in seconds, so round
+  // up to avoid truncating a non-zero remainder to zero.
+  const width = Math.round(project.settings.width);
+  const height = Math.round(project.settings.height);
   const timelineDuration = project.timeline.duration;
   const canvasDuration = project.settings.playDuration ?? 0;
-  const duration =
+  const rawDuration =
     timelineDuration > 0
       ? timelineDuration
       : canvasDuration > 0
         ? canvasDuration
         : timelineDuration;
+  const duration = rawDuration > 0 ? Math.max(1, Math.ceil(rawDuration)) : 0;
   return {
-    layoutJson: stripForSignageSave(project) as unknown as Record<string, unknown>,
+    // layoutJson is the full Download Editor State payload — backend stores
+    // and the preview replayer consume the same shape, so what you see in the
+    // editor is what gets persisted and replayed.
+    layoutJson: buildFullEditorStatePayload(),
     isValid: true,
     duration,
     resolution: `${width}x${height}`,
@@ -92,135 +211,13 @@ export const Toolbar: React.FC = () => {
   const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
 
-  /**
-   * Snapshot used for both Download (full payload) and Preview (live channel).
-   * Centralized so Preview is always replaying exactly what Download serializes.
-   *
-   * - Settings are normalized: every optional ProjectSettings field is
-   *   emitted with its effective value (so the payload is self-contained).
-   * - Widgets are migrated so every config field is present (legacy widgets
-   *   get their newer fields back-filled with defaults).
-   * - `effectiveDuration` is exposed explicitly for the replayer.
-   */
-  const buildPreviewCorePayload = useCallback(() => {
-    // Base the snapshot on getFullProject() (not the store's bare `project`),
-    // so engine-held clips — text / shape / SVG / sticker — are included in the
-    // payload, not just media clips and widgets.
-    const project = useProjectStore.getState().getFullProject();
-    const rawWidgets = useSignageWidgetStore.getState().widgets;
-    const signageWidgets = rawWidgets.map(migrateWidget);
-    const autoDuration = getEffectiveProjectDuration(project);
-    const widgetMaxEnd = signageWidgets.reduce(
-      (m, w) => Math.max(m, w.startTime + w.duration),
-      0,
-    );
-    const effectiveDuration = Math.max(autoDuration, widgetMaxEnd, 0);
-
-    // Synthesize timeline tracks from each widget so downstream replayers that
-    // iterate `tracks[]` see widgets the same way they see media clips.
-    // The widget array is still emitted as the canonical source — this is a
-    // derived view. Clips carry a sentinel `mediaId` prefix (`widget:<id>`)
-    // and an embedded `widget: { type, config, layout, ... }` payload so the
-    // replayer has everything it needs to render.
-    const widgetTracks = signageWidgets.map((w) => {
-      const trackId = `widget-track-${w.id}`;
-      const layout = w.layout ?? { x: 0, y: 0, width: 360, height: 220 };
-      return {
-        id: trackId,
-        type: "graphics" as const,
-        name: `${w.type[0].toUpperCase()}${w.type.slice(1)} Widget`,
-        clips: [
-          {
-            id: `widget-clip-${w.id}`,
-            mediaId: `widget:${w.id}`,
-            trackId,
-            startTime: w.startTime,
-            duration: w.duration,
-            inPoint: 0,
-            outPoint: w.duration,
-            effects: [],
-            audioEffects: [],
-            transform: {
-              position: { x: layout.x, y: layout.y },
-              scale: { x: 1, y: 1 },
-              rotation: 0,
-              anchor: { x: 0.5, y: 0.5 },
-              opacity: 1,
-            },
-            volume: 1,
-            keyframes: [],
-            // Non-standard payload — replayer reads this to render the widget.
-            widget: {
-              type: w.type,
-              config: w.config,
-              layout: w.layout,
-              locked: w.locked ?? false,
-              hidden: w.hidden ?? false,
-            },
-          },
-        ],
-        transitions: [],
-        locked: w.locked ?? false,
-        hidden: w.hidden ?? false,
-        muted: false,
-        solo: false,
-      };
-    });
-
-    const normalizedProject = {
-      ...project,
-      // Persist widgets on the project too, so this payload's `project` round-trips
-      // through useProjectStore.loadProject() (which hydrates the widget store).
-      signageWidgets,
-      settings: {
-        ...project.settings,
-        backgroundColor: project.settings.backgroundColor ?? "rgba(0,0,0,1)",
-        playDuration: project.settings.playDuration ?? effectiveDuration,
-        placeholderText:
-          project.settings.placeholderText ?? "Import media to get started",
-        placeholderTextColor:
-          project.settings.placeholderTextColor ?? "rgba(161,161,170,1)",
-        placeholderFontSize: project.settings.placeholderFontSize ?? 24,
-      },
-      timeline: {
-        ...project.timeline,
-        // Append synthesized widget tracks after the user's real media tracks
-        // so existing track indices stay stable.
-        tracks: [
-          ...project.timeline.tracks,
-          ...(widgetTracks as unknown as typeof project.timeline.tracks),
-        ],
-        duration: Math.max(project.timeline.duration, widgetMaxEnd),
-      },
-    };
-
-    return {
-      exportedAt: new Date().toISOString(),
-      project: normalizedProject,
-      signageWidgets,
-      effectiveDuration,
-    };
-  }, []);
-
   const handleDownloadEditorState = useCallback(() => {
     const timestamp = new Date()
       .toISOString()
       .replace(/\.\d{3}Z$/, "")
       .replace(/:/g, "-");
     const filename = `editor-state-${timestamp}.json`;
-    const corePayload = buildPreviewCorePayload();
-    const payload = {
-      ...corePayload,
-      timeline: {
-        playheadPosition: useTimelineStore.getState().playheadPosition,
-        playbackState: useTimelineStore.getState().playbackState,
-        pixelsPerSecond: useTimelineStore.getState().pixelsPerSecond,
-      },
-      ui: {
-        selectedItems: useUIStore.getState().selectedItems,
-        panels: useUIStore.getState().panels,
-      },
-    };
+    const payload = buildFullEditorStatePayload();
 
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
@@ -234,7 +231,7 @@ export const Toolbar: React.FC = () => {
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
     toast.success("Editor state downloaded", filename);
-  }, [buildPreviewCorePayload]);
+  }, []);
 
   const returnUrl = params.returnUrl?.trim() || "";
   const isIntegratedSession = Boolean(returnUrl);

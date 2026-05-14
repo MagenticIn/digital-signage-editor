@@ -84,12 +84,18 @@ function getToken(): string | null {
   }
 }
 
+/** Production signage backend — used when localStorage isn't seeded yet
+ *  (editor loaded standalone, or before the host app's SIGNAGE_INIT lands). */
+const FALLBACK_API_ORIGIN = "https://gsq-api.myageru.com";
+
 function getApiOrigin(): string | null {
   try {
-    return localStorage.getItem(API_URL_KEY)?.replace(/\/+$/, "") ?? null;
+    const fromStorage = localStorage.getItem(API_URL_KEY)?.replace(/\/+$/, "");
+    if (fromStorage) return fromStorage;
   } catch {
-    return null;
+    /* fall through to fallback */
   }
+  return FALLBACK_API_ORIGIN;
 }
 
 function getApiBase(): string | null {
@@ -109,7 +115,7 @@ async function apiFetch<T>(
 ): Promise<T> {
   const base = getApiBase();
   const token = getToken();
-  
+
   if (!base || !token) {
     throw new Error("Signage backend not connected (missing JWT or API URL).");
   }

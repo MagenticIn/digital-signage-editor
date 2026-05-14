@@ -60,7 +60,9 @@ export class ProjectSerializer {
           return {
             ...item,
             isPlaceholder: true,
-            originalUrl: item.thumbnailUrl || undefined,
+            // Keep the durable library URL when present; fall back to thumbnail
+            // only when the item was never linked to a remote source.
+            originalUrl: item.originalUrl ?? item.thumbnailUrl ?? undefined,
           };
         }
         return item;

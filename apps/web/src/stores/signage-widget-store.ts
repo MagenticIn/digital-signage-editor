@@ -350,6 +350,7 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
       imageUrl: cfg.imageUrl ?? "",
       objectFit: cfg.objectFit ?? defaultConfigs.image.objectFit,
       backgroundColor: normalizeColor(cfg.backgroundColor ?? defaultConfigs.image.backgroundColor),
+      libraryMedia: cfg.libraryMedia,
     };
     return widget;
   }
@@ -363,6 +364,7 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
       autoplay: cfg.autoplay ?? defaultConfigs.video.autoplay,
       objectFit: cfg.objectFit ?? defaultConfigs.video.objectFit,
       backgroundColor: normalizeColor(cfg.backgroundColor ?? defaultConfigs.video.backgroundColor),
+      libraryMedia: cfg.libraryMedia,
     };
     return widget;
   }
@@ -386,6 +388,7 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
     widget.config = {
       file: cfg.file ?? null,
       fileUrl: cfg.fileUrl,
+      libraryMedia: cfg.libraryMedia,
       secondsPerPage: cfg.secondsPerPage ?? defaultConfigs.pdf.secondsPerPage,
       totalPages: cfg.totalPages ?? 0,
       loop: cfg.loop ?? defaultConfigs.pdf.loop,
@@ -421,6 +424,7 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
       muted: cfg.muted ?? defaultConfigs.audio.muted,
       volume: cfg.volume ?? defaultConfigs.audio.volume,
       hideUI: cfg.hideUI ?? defaultConfigs.audio.hideUI,
+      libraryMedia: cfg.libraryMedia,
     };
     return widget;
   }

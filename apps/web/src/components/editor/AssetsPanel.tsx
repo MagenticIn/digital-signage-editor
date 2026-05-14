@@ -35,7 +35,7 @@ import type { MediaItem } from "@openreel/core";
 import { AspectRatioMatchDialog } from "./dialogs/AspectRatioMatchDialog";
 import { SignageMediaLibraryTab } from "./SignageMediaLibraryTab";
 import { LibraryAssetPicker } from "./LibraryAssetPicker";
-import { resolveLibraryAssetUrl } from "./LibraryAssetPicker";
+import { resolveLibraryAssetUrl, toLibraryMediaRef } from "./LibraryAssetPicker";
 import type { SignageMediaItem } from "../../stores/signage-media-store";
 import { toast } from "../../stores/notification-store";
 import { saveDirectoryHandle, saveFileHandle } from "../../services/media-storage";
@@ -655,7 +655,7 @@ export const AssetsPanel: React.FC = () => {
         }
         const file = new File([blob], filename, { type: item.type || blob.type });
 
-        const result = await importMedia(file, fileUrl);
+        const result = await importMedia(file, fileUrl, toLibraryMediaRef(item, fileUrl));
         if (!result.success) {
           toast.error("Import failed", result.error?.message ?? "Unknown error");
         }

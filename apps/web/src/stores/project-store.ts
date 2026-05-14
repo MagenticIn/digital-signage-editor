@@ -24,6 +24,7 @@ import type {
   Effect,
   Keyframe,
   Transform,
+  LibraryMediaRef,
 } from "@openreel/core";
 import {
   ActionExecutor,
@@ -121,7 +122,11 @@ export interface ProjectState {
   ) => Promise<ActionResult>;
 
   // Media library actions
-  importMedia: (file: File, sourceUrl?: string) => Promise<ActionResult>;
+  importMedia: (
+    file: File,
+    sourceUrl?: string,
+    link?: LibraryMediaRef,
+  ) => Promise<ActionResult>;
   deleteMedia: (mediaId: string) => Promise<ActionResult>;
   replaceMediaAsset: (mediaId: string, file: File, sourceFolder?: string) => Promise<ActionResult>;
   renameMedia: (mediaId: string, name: string) => Promise<ActionResult>;
@@ -640,7 +645,11 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       // Media library actions
-      importMedia: async (file: File, sourceUrl?: string) => {
+      importMedia: async (
+        file: File,
+        sourceUrl?: string,
+        link?: LibraryMediaRef,
+      ) => {
         const { project } = get();
 
         try {
@@ -747,6 +756,7 @@ export const useProjectStore = create<ProjectState>()(
               filmstripThumbnails.length > 0 ? filmstripThumbnails : undefined,
             sourceFile: { name: file.name, size: file.size, lastModified: file.lastModified },
             originalUrl: sourceUrl ?? undefined,
+            libraryMedia: link,
           };
 
           const updatedProject = {

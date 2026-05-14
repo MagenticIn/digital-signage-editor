@@ -1,3 +1,5 @@
+import type { LibraryMediaRef } from "@openreel/core";
+
 export type SignageWidgetType =
   | "audio"
   | "calendar"
@@ -82,6 +84,8 @@ export interface PDFConfig {
   file: File | null;
   /** Optional URL of a hosted PDF used as a fallback when `file` is null (e.g. on JSON replay). */
   fileUrl?: string;
+  /** Snapshot of the signage-media library entry when `fileUrl` was picked via "Pick from Library". */
+  libraryMedia?: LibraryMediaRef;
   secondsPerPage: number;
   totalPages: number;
   loop: boolean;
@@ -207,6 +211,8 @@ export interface ImageWidgetConfig {
   objectFit: "cover" | "contain";
   /** rgba(r,g,b,a) string. */
   backgroundColor: string;
+  /** Snapshot of the signage-media library entry when `imageUrl` was picked via "Pick from Library". */
+  libraryMedia?: LibraryMediaRef;
 }
 
 export interface VideoWidgetConfig {
@@ -217,6 +223,8 @@ export interface VideoWidgetConfig {
   objectFit: "cover" | "contain" | "fill";
   /** rgba(r,g,b,a) string. */
   backgroundColor: string;
+  /** Snapshot of the signage-media library entry when `videoUrl` was picked via "Pick from Library". */
+  libraryMedia?: LibraryMediaRef;
 }
 
 export interface AudioWidgetConfig {
@@ -232,6 +240,8 @@ export interface AudioWidgetConfig {
   volume: number;
   /** When true, hide the audio info card and render an invisible drag handle (audio still plays). */
   hideUI: boolean;
+  /** Snapshot of the signage-media library entry when `audioUrl` was picked via "Pick from Library". */
+  libraryMedia?: LibraryMediaRef;
 }
 
 export type WidgetConfig =

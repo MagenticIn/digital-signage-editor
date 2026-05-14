@@ -905,7 +905,7 @@ export const Preview: React.FC = () => {
             timelinePosition < clipEnd
           ) {
             const mediaItem = getMediaItem(audioClip.mediaId);
-            if (!mediaItem?.blob) {
+            if (!mediaItem || (!mediaItem.blob && !mediaItem.originalUrl)) {
               continue;
             }
 
@@ -915,7 +915,14 @@ export const Preview: React.FC = () => {
             if (!audioBuffer) {
               try {
                 const audioContext = audioGraph.getAudioContext();
-                const arrayBuffer = await mediaItem.blob.arrayBuffer();
+                let arrayBuffer: ArrayBuffer | null = null;
+                if (mediaItem.blob) {
+                  arrayBuffer = await mediaItem.blob.arrayBuffer();
+                } else if (mediaItem.originalUrl) {
+                  const r = await fetch(mediaItem.originalUrl);
+                  if (r.ok) arrayBuffer = await r.arrayBuffer();
+                }
+                if (!arrayBuffer) continue;
                 audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
                 audioBufferCacheRef.current.set(audioClip.mediaId, audioBuffer);
               } catch (error) {
@@ -1010,12 +1017,19 @@ export const Preview: React.FC = () => {
         }
 
         const mediaItem = getMediaItem(clip.mediaId);
-        if (!mediaItem?.blob) {
+        if (!mediaItem || (!mediaItem.blob && !mediaItem.originalUrl)) {
           continue;
         }
 
         try {
-          const arrayBuffer = await mediaItem.blob.arrayBuffer();
+          let arrayBuffer: ArrayBuffer | null = null;
+          if (mediaItem.blob) {
+            arrayBuffer = await mediaItem.blob.arrayBuffer();
+          } else if (mediaItem.originalUrl) {
+            const r = await fetch(mediaItem.originalUrl);
+            if (r.ok) arrayBuffer = await r.arrayBuffer();
+          }
+          if (!arrayBuffer) continue;
           const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
           audioBufferCacheRef.current.set(clip.mediaId, audioBuffer);
         } catch {
