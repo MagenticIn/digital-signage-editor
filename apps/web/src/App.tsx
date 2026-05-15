@@ -14,15 +14,28 @@ import { useProjectRecovery } from "./hooks/useProjectRecovery";
 import { SOCIAL_MEDIA_PRESETS, type SocialMediaCategory, type Project } from "@openreel/core";
 import { TooltipProvider } from "@openreel/ui";
 
-function isEditorProjectShape(data: unknown): data is Project {
-  if (!data || typeof data !== "object") return false;
-  const d = data as Record<string, unknown>;
+function looksLikeProject(d: Record<string, unknown>): boolean {
   return (
     typeof d.settings === "object" && d.settings !== null &&
     typeof d.mediaLibrary === "object" && d.mediaLibrary !== null &&
     typeof d.timeline === "object" && d.timeline !== null &&
     Array.isArray((d.timeline as Record<string, unknown>).tracks)
   );
+}
+
+// Saved `layoutJson` from buildFullEditorStatePayload wraps the Project under
+// a `project` key, with `exportedAt`/`effectiveDuration`/`ui`/`timeline`
+// (UI playback state) as siblings. Older builds wrote a flat Project at the
+// top level. Accept either shape — return the unwrapped Project or null.
+function coerceEditorProject(json: unknown): Project | null {
+  if (!json || typeof json !== "object") return null;
+  const j = json as Record<string, unknown>;
+  if (j.project && typeof j.project === "object") {
+    const inner = j.project as Record<string, unknown>;
+    if (looksLikeProject(inner)) return inner as unknown as Project;
+  }
+  if (looksLikeProject(j)) return j as unknown as Project;
+  return null;
 }
 import { setSignageAuth, getSignageLayout, isSignageLayoutsConnected } from "./services/signage-layouts-api";
 import { useSignageMediaStore } from "./stores/signage-media-store";
@@ -137,8 +150,9 @@ function App() {
         }
 
         const layout = await getSignageLayout(params.signageLayoutId!);
-        if (isEditorProjectShape(layout.layoutJson)) {
-          loadProject(layout.layoutJson);
+        const project = coerceEditorProject(layout.layoutJson);
+        if (project) {
+          loadProject(project);
         } else {
           // layoutJson was created outside the editor (e.g. dashboard "Create layout" form).
           // Leave the store's empty Project in place and optionally adopt the layout's canvas size.
