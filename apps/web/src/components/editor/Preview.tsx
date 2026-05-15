@@ -217,6 +217,7 @@ export const Preview: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const videoAreaRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number | null>(null);
   const renderBridgeInitialized = useRef<boolean>(false);
   const lastGoodFrameRef = useRef<ImageBitmap | null>(null);
@@ -244,6 +245,7 @@ export const Preview: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [isRenderBridgeReady, setIsRenderBridgeReady] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [designBoxSize, setDesignBoxSize] = useState({ w: 0, h: 0 });
   const [, setRendererType] = useState<string>("none");
   const [isMaximized, setIsMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -369,6 +371,29 @@ export const Preview: React.FC = () => {
   );
   const timelineTracks = project.timeline.tracks;
   const settings = project.settings;
+
+  // Measure the Video Area parent and compute the design box's exact pixel
+  // dimensions so the canvas is letterboxed correctly in both orientations.
+  // CSS `aspect-ratio + max-height:100%` was unreliable for portrait canvases
+  // inside an unbounded flex parent — the parent grew to match the child
+  // instead of clamping it. JS measurement gives definite pixel bounds.
+  useEffect(() => {
+    const parent = videoAreaRef.current;
+    if (!parent) return;
+
+    const update = () => {
+      const rect = parent.getBoundingClientRect();
+      const aspect = settings.width / Math.max(1, settings.height);
+      const boxW = Math.min(rect.width, rect.height * aspect);
+      const boxH = boxW / Math.max(aspect, 0.0001);
+      setDesignBoxSize({ w: boxW, h: boxH });
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, [settings.width, settings.height]);
 
   // Keep a ref to timelineTracks for use in playback effect without causing re-runs
   const timelineTracksRef = useRef(timelineTracks);
@@ -4825,14 +4850,18 @@ export const Preview: React.FC = () => {
     const onMove = (event: MouseEvent) => {
       if (!dragStartRef.current) return;
       const overlayRect = overlayRef.current?.getBoundingClientRect();
-      // Widget layouts are stored in canvas pixels. The overlay is CSS-scaled to fit the on-screen area,
-      // so we must convert DOM-pixel mouse deltas to canvas pixels.
-      const displayScale =
+      // Widget layouts are stored in canvas pixels. The design box is aspect-locked to the
+      // canvas, so on-screen DOM-pixel deltas convert to canvas pixels via per-axis scale.
+      // With aspect-lock scaleX === scaleY; using both makes the math robust if the box is
+      // ever sized differently.
+      const scaleX =
         overlayRect && settings.width > 0 ? overlayRect.width / settings.width : 1;
+      const scaleY =
+        overlayRect && settings.height > 0 ? overlayRect.height / settings.height : 1;
       const rawDx = event.clientX - dragStartRef.current.x;
       const rawDy = event.clientY - dragStartRef.current.y;
-      const dx = rawDx / displayScale;
-      const dy = rawDy / displayScale;
+      const dx = rawDx / scaleX;
+      const dy = rawDy / scaleY;
       const targetId = draggingWidget ?? resizingWidget?.id;
       if (!targetId) return;
       const widget = widgets.find((item) => item.id === targetId);
@@ -5307,6 +5336,7 @@ export const Preview: React.FC = () => {
 
       {/* Video Area */}
       <div
+        ref={videoAreaRef}
         className={`flex-1 min-h-0 relative flex items-center justify-center bg-background-secondary/30 transition-all duration-300 ${
           isMaximized || isFullscreen ? "p-0" : "p-2"
         }`}
@@ -5320,29 +5350,23 @@ export const Preview: React.FC = () => {
               ? "rounded-none ring-0 shadow-none"
               : "shadow-2xl rounded-xl ring-1 ring-border shadow-[0_0_50px_rgba(0,0,0,0.5)]"
           }`}
-          style={
-            isMaximized || isFullscreen
-              ? {
-                  width: "100%",
-                  height: "100%",
-                  maxWidth: "none",
-                  backgroundColor: "#000",
-                }
-              : {
-                  width: "100%",
-                  height: "auto",
-                  maxWidth: "100%",
-                  maxHeight: "100%",
-                  aspectRatio: `${settings.width} / ${settings.height}`,
-                  backgroundColor: "#000",
-                }
-          }
+          // Design box: aspect-locked to the layout canvas at ALL times. JS-measured
+          // pixel dimensions (via the videoAreaRef ResizeObserver above) replace the
+          // pure-CSS aspect-ratio approach, which was unreliable for portrait
+          // canvases inside an unbounded flex parent. The outer flex parent's
+          // items-center + justify-center centres the box, producing letterbox
+          // gutters in whichever axis is smaller.
+          style={{
+            width: designBoxSize.w > 0 ? `${designBoxSize.w}px` : "100%",
+            height: designBoxSize.h > 0 ? `${designBoxSize.h}px` : "100%",
+            backgroundColor: "#000",
+          }}
         >
           <canvas
             ref={canvasRef}
             width={settings.width}
             height={settings.height}
-            className="w-full h-full object-contain"
+            className="block w-full h-full"
             style={{
               cursor: "default",
             }}
@@ -5351,38 +5375,34 @@ export const Preview: React.FC = () => {
           {/* Processing Overlay */}
           <ProcessingOverlay />
 
-          {/* Widget overlay rendered in CANVAS-PIXEL coordinates. The whole group is CSS-scaled
-              to match the on-screen canvas size, so widget layouts are resolution-independent. */}
+          {/* Widget overlay shares the design box (same aspect-locked container as the canvas).
+              Each widget's position is rendered as a percentage of the design box, so widgets
+              stay anchored relative to the canvas under any container size, aspect, or fullscreen.
+              The on-disk JSON still stores `layout.x/y/width/height` in canvas pixels — only the
+              runtime conversion changes. */}
           <div
-            className="absolute top-0 left-0 origin-top-left"
+            className="absolute inset-0"
             style={{
-              width: settings.width,
-              height: settings.height,
-              transform: `scale(${
-                canvasSize.width > 0 && settings.width > 0
-                  ? canvasSize.width / settings.width
-                  : 1
-              })`,
               pointerEvents: "none",
             }}
           >
           {activeWidgets.map((widget) => {
             const widgetTime = Math.max(0, playheadPosition - widget.startTime);
             const layout = widget.layout ?? { x: 40, y: 40, width: 360, height: 220 };
+            const leftPct = (layout.x / Math.max(1, settings.width)) * 100;
+            const topPct = (layout.y / Math.max(1, settings.height)) * 100;
+            const widthPct = (layout.width / Math.max(1, settings.width)) * 100;
+            const heightPct = (layout.height / Math.max(1, settings.height)) * 100;
             // Read-only preview: never "selected" → no outline, no resize handles.
             const selected = !isPreview && selectedWidgetId === widget.id;
             const isTicker = widget.type === "ticker";
-            const baseWidth = 360;
-            const baseHeight = 220;
-            const fitScale = isTicker
-              ? 1
-              : Math.max(
-                  0.25,
-                  Math.min(
-                    layout.width / Math.max(1, baseWidth),
-                    layout.height / Math.max(1, baseHeight),
-                  ),
-                );
+            // Render each widget at its authored canvas-pixel size, then scale
+            // uniformly to the on-screen design box. This gives FullCalendar /
+            // Recharts the full authored room for their internal layout — no
+            // more 360×220 squeeze that clipped day cells and axis labels.
+            const displayScale = designBoxSize.w > 0
+              ? designBoxSize.w / Math.max(1, settings.width)
+              : 1;
             return (
               <div
                 key={widget.id}
@@ -5392,10 +5412,10 @@ export const Preview: React.FC = () => {
                 style={{
                   position: "absolute",
                   pointerEvents: "auto",
-                  left: layout.x,
-                  top: layout.y,
-                  width: layout.width,
-                  height: layout.height,
+                  left: `${leftPct}%`,
+                  top: `${topPct}%`,
+                  width: `${widthPct}%`,
+                  height: `${heightPct}%`,
                   overflow: "hidden",
                 }}
                 onMouseDown={
@@ -5415,17 +5435,15 @@ export const Preview: React.FC = () => {
                   {isTicker ? (
                     renderWidgetContent(widget, widgetTime, selected)
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-                      <div
-                        style={{
-                          width: baseWidth,
-                          height: baseHeight,
-                          transform: `scale(${fitScale})`,
-                          transformOrigin: "center center",
-                        }}
-                      >
-                        {renderWidgetContent(widget, widgetTime, selected)}
-                      </div>
+                    <div
+                      style={{
+                        width: layout.width,
+                        height: layout.height,
+                        transform: `scale(${displayScale})`,
+                        transformOrigin: "top left",
+                      }}
+                    >
+                      {renderWidgetContent(widget, widgetTime, selected)}
                     </div>
                   )}
                 </div>
