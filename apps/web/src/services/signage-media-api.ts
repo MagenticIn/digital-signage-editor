@@ -106,16 +106,15 @@ function getApiBase(): string | null {
 
 /** True when the signage backend connection is usable (JWT + URL present). */
 export function isSignageConnected(): boolean {
-  return true; // Boolean(getToken()) && Boolean(getApiOrigin());
+  return Boolean(getToken()) && Boolean(getApiOrigin());
 }
 
 async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const base = "https://gsq-api.myageru.com/api/v1" // getApiBase();
-  const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZDA5OWEyYy1hYmY5LTQ1MmEtOWUwNS1kZTA3MzYwYzJiYWQiLCJlbWFpbCI6ImFubW9sQGdvbWFnZW50aWMuY29tIiwiaWF0IjoxNzc4ODQwMTc5LCJleHAiOjE3Nzg5MjY1Nzl9.i4HWNHL6y-9Mau470m9wuzba61RQuxuJedaSGpizldg" // getToken();
-
+  const base = getApiBase();
+  const token = getToken();
 
   if (!base || !token) {
     throw new Error("Signage backend not connected (missing JWT or API URL).");
