@@ -70,8 +70,17 @@ export const defaultConfigs: DefaultConfigs = {
   },
   calendar: {
     calendarUrl: "",
-    displayMode: "month",
     refreshInterval: 300,
+    firstDayOfWeek: 0,
+    showHeader: true,
+    showNavigation: true,
+    showWeekdayLabels: true,
+    backgroundColor: "rgba(15,17,21,1)",
+    textColor: "rgba(245,245,245,1)",
+    mutedTextColor: "rgba(140,144,154,1)",
+    todayColor: "rgba(59,130,246,0.85)",
+    accentColor: "rgba(59,130,246,1)",
+    borderColor: "rgba(60,64,72,0.7)",
   },
   chart: {
     chartType: "bar",
@@ -486,6 +495,19 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
       backgroundColor: normalizeColor(cfg.backgroundColor ?? defaultConfigs.graphics.backgroundColor),
       borderColor: normalizeColor(cfg.borderColor ?? defaultConfigs.graphics.borderColor),
     } as GraphicsWidgetConfig;
+  } else if (widget.type === "calendar") {
+    const cfg = widget.config as Partial<CalendarConfig> & { displayMode?: unknown };
+    widget.config = {
+      ...defaultConfigs.calendar,
+      ...cfg,
+      backgroundColor: normalizeColor(cfg.backgroundColor ?? defaultConfigs.calendar.backgroundColor),
+      textColor: normalizeColor(cfg.textColor ?? defaultConfigs.calendar.textColor),
+      mutedTextColor: normalizeColor(cfg.mutedTextColor ?? defaultConfigs.calendar.mutedTextColor),
+      todayColor: normalizeColor(cfg.todayColor ?? defaultConfigs.calendar.todayColor),
+      accentColor: normalizeColor(cfg.accentColor ?? defaultConfigs.calendar.accentColor),
+      borderColor: normalizeColor(cfg.borderColor ?? defaultConfigs.calendar.borderColor),
+    } as CalendarConfig;
+    delete (widget.config as { displayMode?: unknown }).displayMode;
   }
 
   return widget;

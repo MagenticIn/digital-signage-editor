@@ -46,8 +46,17 @@ export interface GraphicsWidgetConfig {
 
 export interface CalendarConfig {
   calendarUrl: string;
-  displayMode: "month" | "week" | "day";
   refreshInterval: number;
+  firstDayOfWeek: 0 | 1;
+  showHeader: boolean;
+  showNavigation: boolean;
+  showWeekdayLabels: boolean;
+  backgroundColor: string;
+  textColor: string;
+  mutedTextColor: string;
+  todayColor: string;
+  accentColor: string;
+  borderColor: string;
 }
 
 export interface ChartConfig {

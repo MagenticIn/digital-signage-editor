@@ -921,20 +921,34 @@ const CalendarFields = ({ config, onChange }: { config: CalendarConfig; onChange
   <div className={sectionClass}>
     <div>
       <label className={labelClass}>Calendar iCal URL</label>
-      <input className={inputClass} value={config.calendarUrl} onChange={(e) => onChange({ ...config, calendarUrl: e.target.value })} />
-    </div>
-    <div>
-      <label className={labelClass}>Display mode</label>
-      <select className={inputClass} value={config.displayMode} onChange={(e) => onChange({ ...config, displayMode: e.target.value as CalendarConfig["displayMode"] })}>
-        <option value="month">Month</option>
-        <option value="week">Week</option>
-        <option value="day">Day</option>
-      </select>
+      <input className={inputClass} value={config.calendarUrl} onChange={(e) => onChange({ ...config, calendarUrl: e.target.value })} placeholder="https://..." />
     </div>
     <div>
       <label className={labelClass}>Refresh interval (seconds)</label>
       <input type="number" className={inputClass} value={config.refreshInterval} onChange={(e) => onChange({ ...config, refreshInterval: Number(e.target.value) || 60 })} />
     </div>
+    <div>
+      <label className={labelClass}>First day of week</label>
+      <select className={inputClass} value={config.firstDayOfWeek} onChange={(e) => onChange({ ...config, firstDayOfWeek: Number(e.target.value) as 0 | 1 })}>
+        <option value={0}>Sunday</option>
+        <option value={1}>Monday</option>
+      </select>
+    </div>
+    <label className="text-xs flex items-center gap-2">
+      <input type="checkbox" checked={config.showHeader} onChange={(e) => onChange({ ...config, showHeader: e.target.checked })} />Show month header
+    </label>
+    <label className="text-xs flex items-center gap-2">
+      <input type="checkbox" checked={config.showNavigation} onChange={(e) => onChange({ ...config, showNavigation: e.target.checked })} />Show navigation buttons
+    </label>
+    <label className="text-xs flex items-center gap-2">
+      <input type="checkbox" checked={config.showWeekdayLabels} onChange={(e) => onChange({ ...config, showWeekdayLabels: e.target.checked })} />Show weekday labels
+    </label>
+    <ColorOpacityInput label="Background" value={config.backgroundColor} onChange={(rgba) => onChange({ ...config, backgroundColor: rgba })} />
+    <ColorOpacityInput label="Text color" value={config.textColor} onChange={(rgba) => onChange({ ...config, textColor: rgba })} />
+    <ColorOpacityInput label="Muted text" value={config.mutedTextColor} onChange={(rgba) => onChange({ ...config, mutedTextColor: rgba })} />
+    <ColorOpacityInput label="Today highlight" value={config.todayColor} onChange={(rgba) => onChange({ ...config, todayColor: rgba })} />
+    <ColorOpacityInput label="Accent (events & nav)" value={config.accentColor} onChange={(rgba) => onChange({ ...config, accentColor: rgba })} />
+    <ColorOpacityInput label="Gridlines" value={config.borderColor} onChange={(rgba) => onChange({ ...config, borderColor: rgba })} />
   </div>
 );
 
