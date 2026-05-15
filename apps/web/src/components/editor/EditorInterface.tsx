@@ -15,6 +15,8 @@ import { SettingsDialog } from "./settings/SettingsDialog";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useEngineStore } from "../../stores/engine-store";
+import { useTimelineStore } from "../../stores/timeline-store";
+import { useSignageWidgetStore } from "../../stores/signage-widget-store";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
 import {
   initializePlaybackBridge,
@@ -171,6 +173,44 @@ export const EditorInterface: React.FC = () => {
   const { params } = useRouter();
   const isPreview = params.preview === "1";
   const layoutName = params.signageLayoutName ?? "Layout Preview";
+
+  // Preview-mode autoplay + auto-loop. Gated on engines being initialized so
+  // engine-held text/shape/SVG/sticker clips have hydrated before play kicks in.
+  // Loop logic seeks back to 0 whenever the playhead crosses `effectiveDuration`
+  // = max(timeline.duration, settings.playDuration, widget extents) so a
+  // widget-only layout still loops at the right point.
+  const playheadPosition = useTimelineStore((s) => s.playheadPosition);
+  const playbackState = useTimelineStore((s) => s.playbackState);
+  const timelineDuration = useProjectStore((s) => s.project.timeline.duration);
+  const playDuration = useProjectStore((s) => s.project.settings.playDuration);
+  const widgets = useSignageWidgetStore((s) => s.widgets);
+  const hasAutoplayed = useRef(false);
+  useEffect(() => {
+    if (!isPreview) return;
+    if (!initialized) return;
+    if (hasAutoplayed.current) return;
+    hasAutoplayed.current = true;
+    const { seekTo, play } = useTimelineStore.getState();
+    seekTo(0);
+    play();
+  }, [isPreview, initialized]);
+  useEffect(() => {
+    if (!isPreview) return;
+    if (playbackState !== "playing") return;
+    const widgetMaxEnd = widgets.reduce(
+      (m, w) => Math.max(m, w.startTime + w.duration),
+      0,
+    );
+    const effectiveDuration = Math.max(
+      timelineDuration,
+      playDuration ?? 0,
+      widgetMaxEnd,
+    );
+    if (effectiveDuration <= 0) return;
+    if (playheadPosition >= effectiveDuration - 0.001) {
+      useTimelineStore.getState().seekTo(0);
+    }
+  }, [isPreview, playbackState, playheadPosition, timelineDuration, playDuration, widgets]);
 
   const {
     keyframeEditorOpen,

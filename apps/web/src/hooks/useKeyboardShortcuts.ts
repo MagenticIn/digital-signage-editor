@@ -6,8 +6,11 @@ import {
 import { useProjectStore } from "../stores/project-store";
 import { useUIStore } from "../stores/ui-store";
 import { useTimelineStore } from "../stores/timeline-store";
+import { useRouter } from "./use-router";
 
 export function useKeyboardShortcuts() {
+  const { params } = useRouter();
+  const isPreview = params.preview === "1";
   const [showShortcutsOverlay, setShowShortcutsOverlay] = useState(false);
 
   const {
@@ -256,6 +259,8 @@ export function useKeyboardShortcuts() {
   }, [playheadPosition, project.timeline.markers.length, addMarker]);
 
   useEffect(() => {
+    // Preview mode is read-only — no editing shortcuts installed.
+    if (isPreview) return;
     const handlers: Array<[string, ShortcutHandler]> = [
       ["playback.playPause", handlePlayPause],
       ["playback.frameBack", handleFrameBack],
@@ -336,6 +341,7 @@ export function useKeyboardShortcuts() {
     handleExport,
     handleAddText,
     handleAddMarker,
+    isPreview,
   ]);
 
   return {

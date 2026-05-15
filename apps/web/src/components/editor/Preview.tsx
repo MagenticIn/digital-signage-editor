@@ -4766,12 +4766,12 @@ export const Preview: React.FC = () => {
   const progressPercentage =
     actualEndTime > 0 ? (playheadPosition / actualEndTime) * 100 : 0;
 
-  const showResizeHandles = !isPlaying && selectedClip && clipBounds;
+  const showResizeHandles = !isPreview && !isPlaying && selectedClip && clipBounds;
 
-  const showTextClipHandles = !isPlaying && selectedTextClip && textClipBounds;
+  const showTextClipHandles = !isPreview && !isPlaying && selectedTextClip && textClipBounds;
 
   const showShapeClipHandles =
-    !isPlaying && selectedShapeClip && shapeClipBounds;
+    !isPreview && !isPlaying && selectedShapeClip && shapeClipBounds;
 
   const showSubtitleOverlay =
     !isPlaying && selectedSubtitleObj && subtitleBounds;
