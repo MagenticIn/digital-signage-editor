@@ -818,6 +818,10 @@ export const InspectorPanel: React.FC = () => {
     clipType === "shape" ||
     clipType === "svg" ||
     clipType === "sticker";
+  // Media-tab clips (image/video imported via Media tab) intentionally render
+  // no editable inspector sections — only the clip-info card above is shown.
+  // The section JSX below is preserved; toggle this flag to restore controls.
+  const isMediaTabClip: boolean = clipType === "image" || clipType === "video";
 
   return (
     <div
@@ -865,14 +869,50 @@ export const InspectorPanel: React.FC = () => {
           <>
             {/* Clip Info */}
             <div className="mb-4 p-3 bg-background-tertiary rounded-lg border border-border">
-              <p className="text-xs text-text-primary font-medium truncate">
-                {selectedClip.id.substring(0, 20)}...
-              </p>
-              <p className="text-[10px] text-text-muted">
-                Duration: {selectedClip.duration.toFixed(2)}s
-              </p>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-text-primary font-medium truncate">
+                    {selectedClip.id.substring(0, 20)}...
+                  </p>
+                  <p className="text-[10px] text-text-muted">
+                    Duration: {selectedClip.duration.toFixed(2)}s
+                  </p>
+                </div>
+                {isMediaTabClip && (() => {
+                  const clipTrack = project.timeline.tracks.find((t) =>
+                    t.clips.some((c) => c.id === selectedClip.id),
+                  );
+                  if (!clipTrack) return null;
+                  const btnClass =
+                    "text-[10px] px-2 py-1 rounded border border-border text-text-secondary bg-background hover:bg-background-elevated";
+                  const { lockTrack, hideTrack, removeClip } = useProjectStore.getState();
+                  return (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => lockTrack(clipTrack.id, !clipTrack.locked)}
+                        className={btnClass}
+                      >
+                        {clipTrack.locked ? "Unlock" : "Lock"}
+                      </button>
+                      <button
+                        onClick={() => hideTrack(clipTrack.id, !clipTrack.hidden)}
+                        className={btnClass}
+                      >
+                        {clipTrack.hidden ? "Show" : "Hide"}
+                      </button>
+                      <button
+                        onClick={() => removeClip(selectedClip.id)}
+                        className="text-[10px] px-2 py-1 rounded border border-red-500/40 text-red-300 bg-red-500/10 hover:bg-red-500/20"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
 
+            {!isMediaTabClip && (<>
             {clipType === "video" && (
               <Section title="AI Auto-Captions" sectionId="auto-captions" defaultOpen={false}>
                 <div className="space-y-3">
@@ -1447,6 +1487,7 @@ export const InspectorPanel: React.FC = () => {
                 </div>
               </div>
             )}
+            </>)}
           </>
         ) : selectedSubtitle ? (
           <>
