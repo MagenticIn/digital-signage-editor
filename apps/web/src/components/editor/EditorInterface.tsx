@@ -296,7 +296,10 @@ export const EditorInterface: React.FC = () => {
     []
   );
 
-  const timelineVisible = panels.timeline?.visible ?? true;
+  // In preview mode, every editing panel is hidden via render-time gating —
+  // without mutating the persisted ui-store panel state. That way the user's
+  // editor-mode panel layout survives a visit to the preview screen.
+  const timelineVisible = !isPreview && (panels.timeline?.visible ?? true);
   const timelineHeight = panels.timeline?.height ?? 320;
   const isDraggingRef = useRef(false);
 
@@ -376,7 +379,7 @@ export const EditorInterface: React.FC = () => {
           middle column stacks Preview on top of Timeline so the timeline starts
           where the preview starts (right edge of AssetsPanel). */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {(panels.mediaLibrary?.visible ?? true) ? (
+        {!isPreview && (panels.mediaLibrary?.visible ?? true) ? (
           <PanelErrorBoundary name="Assets Panel">
             <AssetsPanel />
           </PanelErrorBoundary>
@@ -417,7 +420,7 @@ export const EditorInterface: React.FC = () => {
           ) : null}
         </div>
 
-        {(panels.inspector?.visible ?? true) ? (
+        {!isPreview && (panels.inspector?.visible ?? true) ? (
           <PanelErrorBoundary name="Inspector">
             <InspectorPanel />
           </PanelErrorBoundary>

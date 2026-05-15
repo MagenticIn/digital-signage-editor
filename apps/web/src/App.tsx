@@ -30,12 +30,26 @@ function looksLikeProject(d: Record<string, unknown>): boolean {
 function coerceEditorProject(json: unknown): Project | null {
   if (!json || typeof json !== "object") return null;
   const j = json as Record<string, unknown>;
+  let project: Project | null = null;
   if (j.project && typeof j.project === "object") {
     const inner = j.project as Record<string, unknown>;
-    if (looksLikeProject(inner)) return inner as unknown as Project;
+    if (looksLikeProject(inner)) project = inner as unknown as Project;
   }
-  if (looksLikeProject(j)) return j as unknown as Project;
-  return null;
+  if (!project && looksLikeProject(j)) project = j as unknown as Project;
+  if (!project) return null;
+  // The save flow synthesizes one `widget-track-*` per widget (clips tagged
+  // `mediaId: "widget:<id>"`) so external replayers can iterate tracks
+  // uniformly. The editor's canonical source for widgets is
+  // `project.signageWidgets` — keeping the synthetic tracks would duplicate
+  // each widget in the Timeline UI. Strip them here.
+  const realTracks = project.timeline.tracks.filter(
+    (t) => !t.clips.some((c) => typeof c.mediaId === "string" && c.mediaId.startsWith("widget:")),
+  );
+  if (realTracks.length === project.timeline.tracks.length) return project;
+  return {
+    ...project,
+    timeline: { ...project.timeline, tracks: realTracks },
+  };
 }
 import { setSignageAuth, getSignageLayout, isSignageLayoutsConnected } from "./services/signage-layouts-api";
 import { useSignageMediaStore } from "./stores/signage-media-store";
@@ -167,13 +181,10 @@ function App() {
             });
           }
         }
-        // In preview mode: hide all editing panels so only the canvas is visible.
-        if (params.preview === "1") {
-          const { setPanelVisible } = useUIStore.getState();
-          setPanelVisible("mediaLibrary", false);
-          setPanelVisible("inspector", false);
-          setPanelVisible("timeline", false);
-        }
+        // Preview mode hides panels via render-time gating in EditorInterface —
+        // we don't mutate the panel store here, so the user's editor-mode panel
+        // visibility preferences (persisted to localStorage) survive a visit to
+        // the preview screen and a return to the editor.
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load layout.";
         setSignageLoadError(msg);
