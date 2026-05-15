@@ -171,7 +171,7 @@ export const defaultConfigs: DefaultConfigs = {
     secondsPerPage: 5,
     totalPages: 0,
     loop: true,
-    fit: "fill",
+    fit: "contain",
     showPageIndicator: true,
     transition: "fade",
   },
@@ -180,7 +180,7 @@ export const defaultConfigs: DefaultConfigs = {
     secondsPerSlide: 5,
     totalSlides: 0,
     loop: true,
-    fit: "fill",
+    fit: "contain",
     showPageIndicator: true,
     transition: "fade",
   },
@@ -394,6 +394,9 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
 
   if (widget.type === "pdf") {
     const cfg = widget.config as Partial<PDFConfig>;
+    // Legacy: old `fit: "fill"` mapped to `object-cover` (crop). New `"fill"` is
+    // a true stretch, so legacy values migrate to `"cover"` to preserve appearance.
+    const migratedFit = cfg.fit === "fill" ? "cover" : (cfg.fit ?? defaultConfigs.pdf.fit);
     widget.config = {
       file: cfg.file ?? null,
       fileUrl: cfg.fileUrl,
@@ -401,7 +404,7 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
       secondsPerPage: cfg.secondsPerPage ?? defaultConfigs.pdf.secondsPerPage,
       totalPages: cfg.totalPages ?? 0,
       loop: cfg.loop ?? defaultConfigs.pdf.loop,
-      fit: cfg.fit ?? defaultConfigs.pdf.fit,
+      fit: migratedFit,
       showPageIndicator: cfg.showPageIndicator ?? defaultConfigs.pdf.showPageIndicator,
       transition: cfg.transition ?? defaultConfigs.pdf.transition,
     };
@@ -410,13 +413,14 @@ export const migrateWidget = (raw: SignageWidget): SignageWidget => {
 
   if (widget.type === "powerpoint") {
     const cfg = widget.config as Partial<PowerPointConfig>;
+    const migratedFit = cfg.fit === "fill" ? "cover" : (cfg.fit ?? defaultConfigs.powerpoint.fit);
     widget.config = {
       file: cfg.file ?? null,
       fileUrl: cfg.fileUrl,
       secondsPerSlide: cfg.secondsPerSlide ?? defaultConfigs.powerpoint.secondsPerSlide,
       totalSlides: cfg.totalSlides ?? 0,
       loop: cfg.loop ?? defaultConfigs.powerpoint.loop,
-      fit: cfg.fit ?? defaultConfigs.powerpoint.fit,
+      fit: migratedFit,
       showPageIndicator: cfg.showPageIndicator ?? defaultConfigs.powerpoint.showPageIndicator,
       transition: cfg.transition ?? defaultConfigs.powerpoint.transition,
     };

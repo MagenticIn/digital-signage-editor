@@ -96,6 +96,8 @@ import { NotificationWidget } from "./widgets/NotificationWidget";
 import { PDFWidget } from "./widgets/PDFWidget";
 import { PowerPointWidget } from "./widgets/PowerPointWidget";
 import { TickerWidget } from "./widgets/TickerWidget";
+import { VideoWidget } from "./widgets/VideoWidget";
+import { AudioWidget } from "./widgets/AudioWidget";
 import { IframeWidget } from "./widgets/IframeWidget";
 import type { MotionPathConfig, GSAPMotionPathPoint } from "@openreel/core";
 
@@ -5032,70 +5034,27 @@ export const Preview: React.FC = () => {
               src={config.imageUrl}
               alt="Widget image"
               className="w-full h-full"
-              style={{ objectFit: config.objectFit }}
+              style={{ objectFit: config.objectFit, display: "block" }}
             />
           </div>
         );
       }
       if (widget.type === "video") {
-        const config = widget.config as VideoWidgetConfig;
-        const videoUrl = config.videoUrl;
-        if (!videoUrl) {
-          return <div className="w-full h-full flex items-center justify-center text-xs text-white/70">Video URL not set</div>;
-        }
         return (
-          <div
-            className="w-full h-full"
-            style={{ backgroundColor: config.backgroundColor }}
-          >
-            <video
-              src={videoUrl}
-              className="w-full h-full"
-              style={{ objectFit: config.objectFit }}
-              autoPlay={config.autoplay}
-              muted={config.muted}
-              loop={config.loop}
-              controls={false}
-            />
-          </div>
+          <VideoWidget
+            config={widget.config as VideoWidgetConfig}
+            widgetTime={widgetTime}
+            isPlaying={isPlaying}
+          />
         );
       }
       if (widget.type === "audio") {
-        const config = widget.config as AudioWidgetConfig;
-        const hasSource = !!config.audioUrl;
         return (
-          <div className={`relative w-full h-full ${config.hideUI ? "" : "flex flex-col items-center justify-center gap-2 text-white px-3 bg-black/40"}`}>
-            {!config.hideUI && (
-              <>
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <span>🎵</span>
-                  <span>{config.title || "Audio"}</span>
-                  {config.muted && <span className="text-[10px] text-yellow-400/80">(muted)</span>}
-                </div>
-                {hasSource ? (
-                  <div className="text-[10px] text-white/60 truncate max-w-full">
-                    {config.audioUrl}
-                  </div>
-                ) : (
-                  <div className="text-[10px] text-white/50">No source</div>
-                )}
-              </>
-            )}
-            {hasSource && (
-              <audio
-                key={`${config.audioUrl}|${config.autoplay}|${config.loop}|${config.muted}|${config.volume}`}
-                src={config.audioUrl}
-                autoPlay={config.autoplay}
-                loop={config.loop}
-                muted={config.muted}
-                ref={(el) => {
-                  if (el) el.volume = Math.min(1, Math.max(0, config.volume ?? 1));
-                }}
-                className="hidden"
-              />
-            )}
-            <div className="absolute inset-0 z-10" aria-hidden />
-          </div>
+          <AudioWidget
+            config={widget.config as AudioWidgetConfig}
+            widgetTime={widgetTime}
+            isPlaying={isPlaying}
+          />
         );
       }
       if (widget.type === "clock") {
@@ -5310,7 +5269,7 @@ export const Preview: React.FC = () => {
       }
       return <CalendarWidget config={widget.config as CalendarConfig} />;
     },
-    [],
+    [isPlaying],
   );
 
   return (

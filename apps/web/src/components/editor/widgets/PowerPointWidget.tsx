@@ -117,10 +117,14 @@ export const PowerPointWidget: React.FC<PowerPointWidgetProps> = ({
   const totalSlides = config.totalSlides || pdfDoc?.numPages || 0;
   const imgClass =
     config.fit === "fill"
-      ? "w-full h-full object-cover"
-      : config.fit === "actual"
-        ? "max-w-full max-h-full"
-        : "w-full h-full object-contain";
+      ? "w-full h-full"
+      : config.fit === "cover"
+        ? "w-full h-full object-cover"
+        : config.fit === "actual"
+          ? "max-w-full max-h-full"
+          : "w-full h-full object-contain";
+  const imgStyle: React.CSSProperties =
+    config.fit === "fill" ? { objectFit: "fill", display: "block" } : { display: "block" };
   return (
     <div className="w-full h-full pointer-events-none flex items-center justify-center overflow-hidden relative">
       <img
@@ -130,6 +134,7 @@ export const PowerPointWidget: React.FC<PowerPointWidgetProps> = ({
         className={`${imgClass} ${
           config.transition === "fade" ? "animate-[ppt-fade_220ms_ease]" : ""
         } ${config.transition === "slide" ? "animate-[ppt-slide_240ms_ease]" : ""}`}
+        style={imgStyle}
       />
       <style>{`
         @keyframes ppt-fade { from { opacity: 0; } to { opacity: 1; } }

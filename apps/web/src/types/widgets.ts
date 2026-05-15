@@ -98,7 +98,7 @@ export interface PDFConfig {
   secondsPerPage: number;
   totalPages: number;
   loop: boolean;
-  fit: "fill" | "contain" | "actual";
+  fit: "fill" | "cover" | "contain" | "actual";
   showPageIndicator: boolean;
   transition: "none" | "fade" | "slide";
 }
@@ -110,7 +110,7 @@ export interface PowerPointConfig {
   secondsPerSlide: number;
   totalSlides: number;
   loop: boolean;
-  fit: "fill" | "contain" | "actual";
+  fit: "fill" | "cover" | "contain" | "actual";
   showPageIndicator: boolean;
   transition: "none" | "fade" | "slide";
 }
@@ -217,7 +217,7 @@ export interface HtmlPackageConfig {
 
 export interface ImageWidgetConfig {
   imageUrl: string;
-  objectFit: "cover" | "contain";
+  objectFit: "cover" | "contain" | "fill";
   /** rgba(r,g,b,a) string. */
   backgroundColor: string;
   /** Snapshot of the signage-media library entry when `imageUrl` was picked via "Pick from Library". */

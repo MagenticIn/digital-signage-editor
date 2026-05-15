@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { PDFConfig } from "../../../types/widgets";
@@ -13,9 +13,27 @@ interface PDFWidgetProps {
   currentTime: number;
 }
 
+const MIN_RENDER_SCALE = 0.5;
+const MAX_RENDER_SCALE = 4;
+
 export const PDFWidget: React.FC<PDFWidgetProps> = ({ config, currentTime }) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [pageImage, setPageImage] = useState<string>("");
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0) setContainerWidth(rect.width);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!config.file && !config.fileUrl) {
@@ -51,7 +69,12 @@ export const PDFWidget: React.FC<PDFWidgetProps> = ({ config, currentTime }) => 
 
     (async () => {
       const page = await pdfDoc.getPage(pageIndex + 1);
-      const viewport = page.getViewport({ scale: 1.1 });
+      const baseViewport = page.getViewport({ scale: 1 });
+      const targetWidth = Math.max(120, containerWidth);
+      let scale = targetWidth / baseViewport.width;
+      if (!Number.isFinite(scale) || scale <= 0) scale = 1.1;
+      scale = Math.min(MAX_RENDER_SCALE, Math.max(MIN_RENDER_SCALE, scale));
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       canvas.width = viewport.width;
       canvas.height = viewport.height;
@@ -64,11 +87,11 @@ export const PDFWidget: React.FC<PDFWidgetProps> = ({ config, currentTime }) => 
     return () => {
       active = false;
     };
-  }, [pdfDoc, pageIndex]);
+  }, [pdfDoc, pageIndex, containerWidth]);
 
   if (!config.file && !config.fileUrl) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center text-xs text-white/70 bg-black/30 gap-1 px-3 text-center">
+      <div ref={containerRef} className="w-full h-full flex flex-col items-center justify-center text-xs text-white/70 bg-black/30 gap-1 px-3 text-center">
         <span className="text-2xl">📄</span>
         <span>PDF widget</span>
         <span className="text-[10px] text-white/50">Upload a file or paste a URL in the inspector</span>
@@ -77,28 +100,36 @@ export const PDFWidget: React.FC<PDFWidgetProps> = ({ config, currentTime }) => 
   }
   if (!pageImage) {
     return (
-      <div className="w-full h-full flex items-center justify-center text-xs text-white/70 bg-black/30">
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center text-xs text-white/70 bg-black/30">
         Loading PDF…
       </div>
     );
   }
 
   const totalPages = config.totalPages || pdfDoc?.numPages || 0;
-  const imgClass =
+  const fitClass =
     config.fit === "fill"
-      ? "w-full h-full object-cover"
-      : config.fit === "actual"
-        ? "max-w-full max-h-full"
-        : "w-full h-full object-contain";
+      ? "w-full h-full"
+      : config.fit === "cover"
+        ? "w-full h-full object-cover"
+        : config.fit === "actual"
+          ? "max-w-full max-h-full"
+          : "w-full h-full object-contain";
+  const fitStyle: React.CSSProperties =
+    config.fit === "fill" ? { objectFit: "fill", display: "block" } : { display: "block" };
   return (
-    <div className="w-full h-full pointer-events-none flex items-center justify-center overflow-hidden relative">
+    <div
+      ref={containerRef}
+      className="w-full h-full pointer-events-none flex items-center justify-center overflow-hidden relative"
+    >
       <img
         key={config.transition === "none" ? undefined : pageIndex}
         src={pageImage}
         alt="PDF page"
-        className={`${imgClass} ${
+        className={`${fitClass} ${
           config.transition === "fade" ? "animate-[pdf-fade_220ms_ease]" : ""
         } ${config.transition === "slide" ? "animate-[pdf-slide_240ms_ease]" : ""}`}
+        style={fitStyle}
       />
       <style>{`
         @keyframes pdf-fade { from { opacity: 0; } to { opacity: 1; } }

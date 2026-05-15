@@ -754,8 +754,9 @@ const PDFFields = ({
     <div>
       <label className={labelClass}>Fit</label>
       <select className={inputClass} value={config.fit} onChange={(e) => onChange({ ...config, fit: e.target.value as PDFConfig["fit"] })}>
-        <option value="fill">Fill (cover the widget)</option>
-        <option value="contain">Contain (letterbox)</option>
+        <option value="contain">Contain (letterbox, no crop)</option>
+        <option value="cover">Cover (fill widget, crop edges)</option>
+        <option value="fill">Fill (stretch to widget)</option>
         <option value="actual">Actual size</option>
       </select>
     </div>
@@ -799,8 +800,9 @@ const PowerPointFields = ({ config, onChange }: { config: PowerPointConfig; onCh
     <div>
       <label className={labelClass}>Fit</label>
       <select className={inputClass} value={config.fit} onChange={(e) => onChange({ ...config, fit: e.target.value as PowerPointConfig["fit"] })}>
-        <option value="fill">Fill (cover the widget)</option>
-        <option value="contain">Contain (letterbox)</option>
+        <option value="contain">Contain (letterbox, no crop)</option>
+        <option value="cover">Cover (fill widget, crop edges)</option>
+        <option value="fill">Fill (stretch to widget)</option>
         <option value="actual">Actual size</option>
       </select>
     </div>
@@ -1378,6 +1380,7 @@ const ImageFields = ({ config, onChange }: { config: ImageWidgetConfig; onChange
       <select className={inputClass} value={config.objectFit} onChange={(e) => onChange({ ...config, objectFit: e.target.value as ImageWidgetConfig["objectFit"] })}>
         <option value="cover">Cover</option>
         <option value="contain">Contain</option>
+        <option value="fill">Fill</option>
       </select>
     </div>
     <ColorOpacityInput label="Background color" value={config.backgroundColor} onChange={(rgba) => onChange({ ...config, backgroundColor: rgba })} />
@@ -1414,9 +1417,9 @@ const VideoFields = ({ config, onChange }: { config: VideoWidgetConfig; onChange
     <label className="text-xs flex items-center gap-2">
       <input type="checkbox" checked={config.muted} onChange={(e) => onChange({ ...config, muted: e.target.checked })} />Muted
     </label>
-    <label className="text-xs flex items-center gap-2">
-      <input type="checkbox" checked={config.autoplay} onChange={(e) => onChange({ ...config, autoplay: e.target.checked })} />Autoplay
-    </label>
+    <p className="text-[10px] text-text-muted leading-snug">
+      Playback follows the editor timeline — the video starts when the playhead enters this widget and pauses when the timeline pauses.
+    </p>
   </div>
 );
 
@@ -1478,11 +1481,13 @@ const AudioFields = ({ config, onChange }: { config: AudioWidgetConfig; onChange
         />
       </div>
       <div className="space-y-1.5 pt-1">
-        {toggle("autoplay", "Autoplay", "Start when the widget mounts.")}
         {toggle("loop", "Loop", "Restart when playback ends.")}
-        {toggle("muted", "Muted", "Required by browsers for autoplay without user interaction.")}
+        {toggle("muted", "Muted", "Silence the audio.")}
         {toggle("hideUI", "Hide UI", "Hide the title/source card and let audio play invisibly.")}
       </div>
+      <p className="text-[10px] text-text-muted leading-snug">
+        Playback follows the editor timeline — audio starts when the playhead enters this widget and pauses when the timeline pauses.
+      </p>
     </div>
   );
 };
