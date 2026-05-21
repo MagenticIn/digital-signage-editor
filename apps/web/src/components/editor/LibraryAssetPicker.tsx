@@ -13,7 +13,6 @@ import {
   AlertTriangle,
   X,
 } from "lucide-react";
-import { ScrollArea } from "@openreel/ui";
 import type { LibraryMediaRef } from "@openreel/core";
 import {
   useSignageMediaStore,
@@ -42,9 +41,9 @@ const FILTER_LABEL: Record<LibraryFilter, string> = {
 function matchesFilter(item: SignageMediaItem, filter: LibraryFilter): boolean {
   const t = (item.type ?? "").toLowerCase();
   if (filter === "all") {
-    // AssetsPanel media tab: only image / video / audio. PDFs (and any other
-    // MIME types) are excluded from the catch-all picker.
-    return t.startsWith("image/") || t.startsWith("video/") || t.startsWith("audio/");
+    // AssetsPanel media tab: only image / video. Audio, PDFs, and any other
+    // MIME types are excluded — the media tab is for visual assets only.
+    return t.startsWith("image/") || t.startsWith("video/");
   }
   if (filter === "pdf") return t === "application/pdf";
   return t.startsWith(`${filter}/`);
@@ -278,8 +277,8 @@ export const LibraryAssetPicker: React.FC<LibraryAssetPickerProps> = ({
           </div>
         ) : null}
 
-        <ScrollArea className="flex-1 min-h-[260px]">
-          <div className="px-5 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="px-5 py-4 min-h-[260px]">
             {loading && filteredItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
@@ -309,7 +308,7 @@ export const LibraryAssetPicker: React.FC<LibraryAssetPickerProps> = ({
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         {totalPages > 1 && connected && (
           <div className="flex items-center justify-center gap-3 px-5 py-2 border-t border-zinc-800">

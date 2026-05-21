@@ -578,6 +578,85 @@ export const useProjectStore = create<ProjectState>()(
             }
           })();
         }
+
+        // Rehydrate media blobs after load. The save flow nulls
+        // `blob`/`fileHandle`/`waveformData` (Toolbar.buildFullEditorStatePayload),
+        // so a freshly-loaded project references media only by id. The whole
+        // render pipeline depends on the blob: the MediaBunny playback decoder
+        // (Preview.tsx) does `new BlobSource(mediaItem.blob)` and bails when it's
+        // null, and the paused-frame decoder needs it too. Without a blob, video
+        // clips show only the name/time placeholder while audio still plays.
+        //
+        // Two tiers, in order:
+        //   1. IndexedDB (same-browser refresh — bytes were cached on import).
+        //   2. Fetch `originalUrl` (cross-session / backend load — every
+        //      UPLOAD-source library item carries a durable URL; the library
+        //      import already fetches these cross-origin successfully). Fetched
+        //      bytes are written back to IndexedDB so the next load is instant.
+        const needsBlob = fixedProject.mediaLibrary.items.some(
+          (item) => !item.blob && !item.isPlaceholder,
+        );
+        if (needsBlob) {
+          (async () => {
+            try {
+              const storedMedia = await loadProjectMedia(fixedProject.id);
+              const blobMap = new Map(storedMedia.map((m) => [m.id, m.blob]));
+
+              const restoredItems = await Promise.all(
+                fixedProject.mediaLibrary.items.map(async (item) => {
+                  if (item.blob || item.isPlaceholder) return item;
+
+                  // Tier 1: IndexedDB.
+                  let blob = blobMap.get(item.id) ?? undefined;
+
+                  // Tier 2: fetch the durable source URL.
+                  if (!blob && item.originalUrl) {
+                    try {
+                      const resp = await fetch(item.originalUrl, {
+                        mode: "cors",
+                        credentials: "omit",
+                      });
+                      if (resp.ok) {
+                        blob = await resp.blob();
+                        // Cache back to IndexedDB for fast subsequent loads.
+                        try {
+                          await saveMediaBlob(
+                            fixedProject.id,
+                            item.id,
+                            blob,
+                            item.metadata,
+                          );
+                        } catch {
+                          /* best-effort cache; ignore quota/write errors */
+                        }
+                      }
+                    } catch (e) {
+                      console.warn(
+                        `[ProjectStore] Could not fetch media for ${item.name}:`,
+                        e,
+                      );
+                    }
+                  }
+
+                  return blob ? restoreMediaItem(item, blob) : item;
+                }),
+              );
+
+              // Guard against clobbering a newer project that loaded while we
+              // were awaiting the network / IndexedDB.
+              const current = get().project;
+              if (current.id !== fixedProject.id) return;
+              set({
+                project: {
+                  ...current,
+                  mediaLibrary: { ...current.mediaLibrary, items: restoredItems },
+                },
+              });
+            } catch (err) {
+              console.warn("[ProjectStore] Failed to rehydrate media blobs:", err);
+            }
+          })();
+        }
       },
 
       // Rename project

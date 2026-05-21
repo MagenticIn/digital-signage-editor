@@ -300,7 +300,18 @@ export const Preview: React.FC = () => {
   // Video element cache for native hardware-accelerated frame decoding (thumbnails/scrubbing)
   // Much more reliable than MediaBunny's CanvasSink for random-access seeking
   const videoElementCacheRef = useRef<
-    Map<string, { video: HTMLVideoElement; url: string; lastUsed: number }>
+    Map<
+      string,
+      {
+        video: HTMLVideoElement;
+        url: string;
+        lastUsed: number;
+        // True when `url` is an object URL we created from a local blob and
+        // must revoke on eviction. False when `url` is a durable remote
+        // source (a library/CDN `originalUrl`) that must NOT be revoked.
+        isObjectUrl: boolean;
+      }
+    >
   >(new Map());
 
   // Persistent decoder cache for efficient playback (legacy - kept for fallback)
@@ -618,7 +629,7 @@ export const Preview: React.FC = () => {
 
       for (const entry of videoElementCacheRef.current.values()) {
         entry.video.src = "";
-        URL.revokeObjectURL(entry.url);
+        if (entry.isObjectUrl) URL.revokeObjectURL(entry.url);
       }
       videoElementCacheRef.current.clear();
 
@@ -1128,10 +1139,19 @@ export const Preview: React.FC = () => {
       canvasHeight: number,
     ): Promise<ImageBitmap | null> => {
       const mediaItem = getMediaItem(clip.mediaId);
+      if (!mediaItem) return null;
 
-      if (!mediaItem?.blob) {
-        // Fallback for image clips with no blob (e.g. signage CDN imports after save round-trip)
-        if (mediaItem?.type === "image" && mediaItem.originalUrl) {
+      // Image clips: decode from the local blob, else fetch the durable
+      // library/CDN URL (the blob is nulled on save round-trip).
+      if (mediaItem.type === "image") {
+        if (mediaItem.blob) {
+          try {
+            return await createImageBitmap(mediaItem.blob);
+          } catch {
+            return null;
+          }
+        }
+        if (mediaItem.originalUrl) {
           const cached = imageBitmapCacheRef.current.get(clip.id);
           if (cached) return cached;
 
@@ -1159,13 +1179,20 @@ export const Preview: React.FC = () => {
         return null;
       }
 
-      if (mediaItem.type === "image") {
-        try {
-          return await createImageBitmap(mediaItem.blob);
-        } catch {
-          return null;
-        }
+      // Video clips: decode a frame via a <video> element. Source is the
+      // local blob when present, else the durable library URL (originalUrl).
+      // Without the URL fallback, a media-tab video loses its blob on a save
+      // round-trip and the canvas shows only the name/time placeholder while
+      // audio (which already has an originalUrl fallback) keeps playing.
+      let videoSrc: string | null = null;
+      let srcIsObjectUrl = false;
+      if (mediaItem.blob) {
+        videoSrc = URL.createObjectURL(mediaItem.blob);
+        srcIsObjectUrl = true;
+      } else if (mediaItem.originalUrl) {
+        videoSrc = mediaItem.originalUrl;
       }
+      if (!videoSrc) return null;
 
       try {
         const clipLocalTime = time - clip.startTime;
@@ -1180,7 +1207,7 @@ export const Preview: React.FC = () => {
         let cached = videoElementCacheRef.current.get(cacheKey);
 
         if (!cached) {
-          const url = URL.createObjectURL(mediaItem.blob);
+          const url = videoSrc;
           const video = document.createElement("video");
           video.src = url;
           video.muted = true;
@@ -1203,7 +1230,7 @@ export const Preview: React.FC = () => {
             };
           });
 
-          cached = { video, url, lastUsed: Date.now() };
+          cached = { video, url, lastUsed: Date.now(), isObjectUrl: srcIsObjectUrl };
           videoElementCacheRef.current.set(cacheKey, cached);
 
           if (videoElementCacheRef.current.size > 8) {
@@ -1219,11 +1246,15 @@ export const Preview: React.FC = () => {
               const oldEntry = videoElementCacheRef.current.get(oldestKey);
               if (oldEntry) {
                 oldEntry.video.src = "";
-                URL.revokeObjectURL(oldEntry.url);
+                if (oldEntry.isObjectUrl) URL.revokeObjectURL(oldEntry.url);
                 videoElementCacheRef.current.delete(oldestKey);
               }
             }
           }
+        } else if (srcIsObjectUrl) {
+          // We created an object URL above but the element was already cached;
+          // release the duplicate so it doesn't leak.
+          URL.revokeObjectURL(videoSrc);
         }
 
         cached.lastUsed = Date.now();
@@ -1275,7 +1306,7 @@ export const Preview: React.FC = () => {
         const cached = videoElementCacheRef.current.get(clip.mediaId);
         if (cached) {
           cached.video.src = "";
-          URL.revokeObjectURL(cached.url);
+          if (cached.isObjectUrl) URL.revokeObjectURL(cached.url);
           videoElementCacheRef.current.delete(clip.mediaId);
         }
         return null;
