@@ -100,6 +100,37 @@ function computeEarliestStartTimeByMedia(
 }
 
 /**
+ * Runs `tasks` with at most `limit` running concurrently. Workers pull
+ * from a shared cursor over the array, so enqueue order determines
+ * start order (completion order is naturally interleaved). Per-task
+ * errors are swallowed — each task is expected to do its own try/catch.
+ */
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number,
+): Promise<void> {
+  let cursor = 0;
+  const worker = async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= tasks.length) return;
+      try {
+        await tasks[i]();
+      } catch {
+        /* per-task try/catch is the caller's responsibility */
+      }
+    }
+  };
+  const workers: Promise<void>[] = [];
+  for (let i = 0; i < Math.min(limit, tasks.length); i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+}
+
+const MEDIA_HYDRATION_CONCURRENCY = 4;
+
+/**
  * ProjectState - Complete state interface for project management
  *
  * Provides comprehensive API for:
@@ -728,27 +759,37 @@ export const useProjectStore = create<ProjectState>()(
                 set({ hydratingMediaIds: next });
               };
 
-              for (const item of toFetch) {
-                // Bail out if the user switched to a different project
-                // while we were awaiting.
+              // Workers race on a shared cursor over `toFetch` (timeline-
+              // priority sorted). MEDIA_HYDRATION_CONCURRENCY in flight at
+              // most. If the user switches projects mid-flight, every
+              // worker observes `aborted` and short-circuits — we can't
+              // `return` out of the IIFE from inside a worker.
+              let aborted = false;
+              const hydrateOne = async (item: typeof toFetch[number]) => {
+                if (aborted) return;
                 if (get().project.id !== fixedProject.id) {
-                  set({ hydratingMediaIds: new Set() });
+                  if (!aborted) {
+                    aborted = true;
+                    set({ hydratingMediaIds: new Set() });
+                  }
                   return;
                 }
                 if (!item.originalUrl) {
                   markDone(item.id);
-                  continue;
+                  return;
                 }
                 try {
                   const resp = await fetch(item.originalUrl, {
                     mode: "cors",
                     credentials: "omit",
                   });
+                  if (aborted) return;
                   if (!resp.ok) {
                     markDone(item.id);
-                    continue;
+                    return;
                   }
                   const blob = await resp.blob();
+                  if (aborted) return;
                   try {
                     await saveMediaBlob(
                       fixedProject.id,
@@ -765,7 +806,10 @@ export const useProjectStore = create<ProjectState>()(
                   // without waiting for the rest of the queue.
                   const current = get().project;
                   if (current.id !== fixedProject.id) {
-                    set({ hydratingMediaIds: new Set() });
+                    if (!aborted) {
+                      aborted = true;
+                      set({ hydratingMediaIds: new Set() });
+                    }
                     return;
                   }
                   const restored = await restoreMediaItem(item, blob);
@@ -789,7 +833,12 @@ export const useProjectStore = create<ProjectState>()(
                 } finally {
                   markDone(item.id);
                 }
-              }
+              };
+
+              await runWithConcurrency(
+                toFetch.map((item) => () => hydrateOne(item)),
+                MEDIA_HYDRATION_CONCURRENCY,
+              );
             } catch (err) {
               console.warn("[ProjectStore] Failed to rehydrate media blobs:", err);
             }

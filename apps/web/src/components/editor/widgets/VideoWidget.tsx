@@ -33,6 +33,13 @@ export const VideoWidget: React.FC<VideoWidgetProps> = ({ config, widgetTime, is
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
+    // Don't drive the element until it has decoded its first frame.
+    // Without this guard, the timeline keeps advancing widgetTime while
+    // the element is still in HAVE_METADATA, triggering a perpetual
+    // seek-ahead chase that prevents the decoder from ever producing a
+    // frame (visible as a black canvas that only recovers after a
+    // manual pause + play).
+    if (status !== "ready") return;
     if (Math.abs(el.currentTime - widgetTime) > SEEK_THRESHOLD) {
       try {
         el.currentTime = widgetTime;
@@ -48,7 +55,7 @@ export const VideoWidget: React.FC<VideoWidgetProps> = ({ config, widgetTime, is
     } else {
       el.pause();
     }
-  }, [widgetTime, isPlaying]);
+  }, [widgetTime, isPlaying, status]);
 
   if (!config.videoUrl) {
     return (

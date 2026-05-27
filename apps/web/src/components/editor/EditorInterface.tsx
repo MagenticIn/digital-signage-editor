@@ -187,16 +187,18 @@ export const EditorInterface: React.FC = () => {
   const widgets = useSignageWidgetStore((s) => s.widgets);
   const hydratingMediaIds = useProjectStore((s) => s.hydratingMediaIds);
   const isHydrating = hydratingMediaIds.size > 0;
-  const hasAutoplayed = useRef(false);
+  // Preview no longer auto-plays. We still seek to 0 once hydration
+  // completes so the play button starts the layout from the beginning
+  // — but playback is gated on an explicit user click on the overlay
+  // button below.
+  const hasSeekedToZero = useRef(false);
   useEffect(() => {
     if (!isPreview) return;
     if (!initialized) return;
     if (isHydrating) return;
-    if (hasAutoplayed.current) return;
-    hasAutoplayed.current = true;
-    const { seekTo, play } = useTimelineStore.getState();
-    seekTo(0);
-    play();
+    if (hasSeekedToZero.current) return;
+    hasSeekedToZero.current = true;
+    useTimelineStore.getState().seekTo(0);
   }, [isPreview, initialized, isHydrating]);
   useEffect(() => {
     if (!isPreview) return;
