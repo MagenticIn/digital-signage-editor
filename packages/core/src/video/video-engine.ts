@@ -292,7 +292,12 @@ export class VideoEngine {
       video.src = url;
       video.muted = true;
       video.playsInline = true;
-      video.preload = "auto";
+      // `metadata` (not `auto`): we only need decoded frames around the
+      // requested timecode, and the source is a local Blob so seeks are
+      // instant. `auto` would force the browser to fully buffer the
+      // entire file before doing any work, which on a project with
+      // multiple videos pinned the main thread + memory.
+      video.preload = "metadata";
 
       await new Promise<void>((resolve, reject) => {
         video.onloadedmetadata = () => resolve();

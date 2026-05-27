@@ -63,6 +63,43 @@ import { useSignageWidgetStore, migrateWidgets } from "./signage-widget-store";
 import type { SignageWidget } from "../types/widgets";
 
 /**
+ * Returns the set of mediaIds referenced by at least one clip on any
+ * timeline track. Used by the post-load hydration pump to limit
+ * automatic blob fetches to media the project actually uses, instead
+ * of every item in the library.
+ */
+function collectTimelineMediaIds(project: Project): Set<string> {
+  const ids = new Set<string>();
+  for (const track of project.timeline?.tracks ?? []) {
+    for (const clip of track.clips ?? []) {
+      if (clip.mediaId) ids.add(clip.mediaId);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Returns a `mediaId -> earliest clip.startTime` map. Used to prioritize
+ * hydration order so videos at the start of the timeline become
+ * playable first.
+ */
+function computeEarliestStartTimeByMedia(
+  project: Project,
+): Map<string, number> {
+  const earliest = new Map<string, number>();
+  for (const track of project.timeline?.tracks ?? []) {
+    for (const clip of track.clips ?? []) {
+      if (!clip.mediaId) continue;
+      const cur = earliest.get(clip.mediaId);
+      if (cur === undefined || clip.startTime < cur) {
+        earliest.set(clip.mediaId, clip.startTime);
+      }
+    }
+  }
+  return earliest;
+}
+
+/**
  * ProjectState - Complete state interface for project management
  *
  * Provides comprehensive API for:
@@ -96,6 +133,13 @@ export interface ProjectState {
   // Loading state
   isLoading: boolean;
   error: string | null;
+
+  // Set of mediaIds whose blob bytes are currently being fetched from
+  // the backend during the post-load hydration pump. UI surfaces (media
+  // tab thumbnails, timeline clip lanes) read this to show a spinner so
+  // the user knows the editor is downloading the source. A Set instance
+  // is replaced (not mutated) on every change so Zustand fires updates.
+  hydratingMediaIds: Set<string>;
 
   createNewProject: (
     name?: string,
@@ -446,6 +490,7 @@ export const useProjectStore = create<ProjectState>()(
       clipRedoStack: [] as ClipHistoryEntry[],
       isLoading: false,
       error: null,
+      hydratingMediaIds: new Set<string>(),
       clipboard: [] as Clip[],
       copiedEffects: [] as Effect[],
 
@@ -588,11 +633,22 @@ export const useProjectStore = create<ProjectState>()(
         // clips show only the name/time placeholder while audio still plays.
         //
         // Two tiers, in order:
-        //   1. IndexedDB (same-browser refresh — bytes were cached on import).
-        //   2. Fetch `originalUrl` (cross-session / backend load — every
-        //      UPLOAD-source library item carries a durable URL; the library
-        //      import already fetches these cross-origin successfully). Fetched
-        //      bytes are written back to IndexedDB so the next load is instant.
+        //   1. IndexedDB (same-browser refresh — bytes were cached on import
+        //      or by a prior hydration pass).
+        //   2. Fetch `originalUrl` SEQUENTIALLY, only for items actually
+        //      referenced by a clip on the timeline. Library items the user
+        //      hasn't placed yet are NOT auto-fetched — they're hydrated on
+        //      demand when first dropped onto the canvas. Fetched bytes are
+        //      written back to IndexedDB so the next load is instant.
+        //
+        //  Why sequential + timeline-only: the old `Promise.all(items.map())`
+        //  fired one network request per library item simultaneously. On a
+        //  project with 10+ videos the backend throttler tripped (429) and
+        //  the UI hung waiting for the storm to drain. Sequential hydration
+        //  keeps at most ONE network request in flight; the user sees the
+        //  first timeline video become ready, then the second, while the
+        //  rest stream lazily from `originalUrl` via HTTP Range until their
+        //  turn comes.
         const needsBlob = fixedProject.mediaLibrary.items.some(
           (item) => !item.blob && !item.isPlaceholder,
         );
@@ -602,56 +658,138 @@ export const useProjectStore = create<ProjectState>()(
               const storedMedia = await loadProjectMedia(fixedProject.id);
               const blobMap = new Map(storedMedia.map((m) => [m.id, m.blob]));
 
-              const restoredItems = await Promise.all(
+              // Tier 1 — IndexedDB lookup. `restoreMediaItem` is async
+              // (thumbnail regeneration may decode a frame), so we await
+              // each item. Bounded by `mediaLibrary.items.length`, never
+              // touches the network.
+              const tier1Items: MediaItem[] = await Promise.all(
                 fixedProject.mediaLibrary.items.map(async (item) => {
                   if (item.blob || item.isPlaceholder) return item;
-
-                  // Tier 1: IndexedDB.
-                  let blob = blobMap.get(item.id) ?? undefined;
-
-                  // Tier 2: fetch the durable source URL.
-                  if (!blob && item.originalUrl) {
-                    try {
-                      const resp = await fetch(item.originalUrl, {
-                        mode: "cors",
-                        credentials: "omit",
-                      });
-                      if (resp.ok) {
-                        blob = await resp.blob();
-                        // Cache back to IndexedDB for fast subsequent loads.
-                        try {
-                          await saveMediaBlob(
-                            fixedProject.id,
-                            item.id,
-                            blob,
-                            item.metadata,
-                          );
-                        } catch {
-                          /* best-effort cache; ignore quota/write errors */
-                        }
-                      }
-                    } catch (e) {
-                      console.warn(
-                        `[ProjectStore] Could not fetch media for ${item.name}:`,
-                        e,
-                      );
-                    }
-                  }
-
-                  return blob ? restoreMediaItem(item, blob) : item;
+                  const cached = blobMap.get(item.id);
+                  return cached ? await restoreMediaItem(item, cached) : item;
                 }),
               );
 
-              // Guard against clobbering a newer project that loaded while we
-              // were awaiting the network / IndexedDB.
-              const current = get().project;
-              if (current.id !== fixedProject.id) return;
-              set({
-                project: {
-                  ...current,
-                  mediaLibrary: { ...current.mediaLibrary, items: restoredItems },
-                },
-              });
+              {
+                const current = get().project;
+                if (current.id !== fixedProject.id) return;
+                set({
+                  project: {
+                    ...current,
+                    mediaLibrary: {
+                      ...current.mediaLibrary,
+                      items: tier1Items,
+                    },
+                  },
+                });
+              }
+
+              // Tier 2 — sequential URL fetches. Two passes, in order:
+              //   pass 1: items referenced by a clip on the timeline,
+              //           sorted by earliest startTime (so the clip at
+              //           0:00 becomes playable first).
+              //   pass 2: library-only items the user might place later
+              //           — fetched in id order so this terminates
+              //           deterministically. Still sequential, never
+              //           parallel, so the backend never sees more than
+              //           one in-flight request from the hydration pump.
+              const mediaIdsOnTimeline = collectTimelineMediaIds(fixedProject);
+              const startTimeById = computeEarliestStartTimeByMedia(fixedProject);
+              const needsFetch = tier1Items.filter(
+                (it) =>
+                  !it.blob &&
+                  !it.isPlaceholder &&
+                  !!it.originalUrl,
+              );
+              const timelineFirst = needsFetch
+                .filter((it) => mediaIdsOnTimeline.has(it.id))
+                .sort(
+                  (a, b) =>
+                    (startTimeById.get(a.id) ?? Infinity) -
+                    (startTimeById.get(b.id) ?? Infinity),
+                );
+              const libraryAfter = needsFetch
+                .filter((it) => !mediaIdsOnTimeline.has(it.id))
+                .sort((a, b) => a.id.localeCompare(b.id));
+              const toFetch = [...timelineFirst, ...libraryAfter];
+
+              // Surface the full queue to the UI up-front so spinners
+              // appear immediately on every pending item, not just on
+              // the one currently being downloaded.
+              if (toFetch.length > 0) {
+                const initialIds = new Set(get().hydratingMediaIds);
+                for (const it of toFetch) initialIds.add(it.id);
+                set({ hydratingMediaIds: initialIds });
+              }
+
+              const markDone = (mediaId: string) => {
+                const next = new Set(get().hydratingMediaIds);
+                next.delete(mediaId);
+                set({ hydratingMediaIds: next });
+              };
+
+              for (const item of toFetch) {
+                // Bail out if the user switched to a different project
+                // while we were awaiting.
+                if (get().project.id !== fixedProject.id) {
+                  set({ hydratingMediaIds: new Set() });
+                  return;
+                }
+                if (!item.originalUrl) {
+                  markDone(item.id);
+                  continue;
+                }
+                try {
+                  const resp = await fetch(item.originalUrl, {
+                    mode: "cors",
+                    credentials: "omit",
+                  });
+                  if (!resp.ok) {
+                    markDone(item.id);
+                    continue;
+                  }
+                  const blob = await resp.blob();
+                  try {
+                    await saveMediaBlob(
+                      fixedProject.id,
+                      item.id,
+                      blob,
+                      item.metadata,
+                    );
+                  } catch {
+                    /* best-effort cache; ignore quota/write errors */
+                  }
+                  // Apply the new blob to the live store immediately so
+                  // the preview swaps from URL-streaming to in-memory
+                  // playback for this clip as soon as it's ready,
+                  // without waiting for the rest of the queue.
+                  const current = get().project;
+                  if (current.id !== fixedProject.id) {
+                    set({ hydratingMediaIds: new Set() });
+                    return;
+                  }
+                  const restored = await restoreMediaItem(item, blob);
+                  const updatedItems = current.mediaLibrary.items.map((it) =>
+                    it.id === item.id ? restored : it,
+                  );
+                  set({
+                    project: {
+                      ...current,
+                      mediaLibrary: {
+                        ...current.mediaLibrary,
+                        items: updatedItems,
+                      },
+                    },
+                  });
+                } catch (e) {
+                  console.warn(
+                    `[ProjectStore] Could not fetch media for ${item.name}:`,
+                    e,
+                  );
+                } finally {
+                  markDone(item.id);
+                }
+              }
             } catch (err) {
               console.warn("[ProjectStore] Failed to rehydrate media blobs:", err);
             }

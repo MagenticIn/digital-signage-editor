@@ -196,6 +196,62 @@ const formatDuration = (seconds: number): string => {
  */
 type MediaViewMode = "large" | "small" | "list";
 
+// Renders a media item's thumbnail with three guarantees the raw <img>
+// tag couldn't give us:
+//   1. `blob:` URLs (which point to in-memory Blobs from a prior
+//      session) are detected and never attempted — they always 404.
+//   2. Any other load failure falls back to the type icon, so a broken
+//      thumbnail never leaves an empty box in the asset grid.
+//   3. While the project store is fetching the source bytes for this
+//      item (post-load hydration pump), a small spinner overlay tells
+//      the user the file is being prepared.
+const MediaThumbImage: React.FC<{
+  thumbnailUrl: string | null | undefined;
+  alt: string;
+  // Lucide icon types vary by package version; using `any` here avoids
+  // tying the helper to a specific Lucide ForwardRef type while still
+  // documenting the prop shape via the call sites.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  icon: any;
+  iconSize: number;
+  iconColor: string;
+  isHydrating: boolean;
+  spinnerSize: number;
+}> = ({ thumbnailUrl, alt, icon: Icon, iconSize, iconColor, isHydrating, spinnerSize }) => {
+  const [failed, setFailed] = useState(false);
+  // Try whatever URL we have. `blob:` URLs minted by the current session
+  // (e.g. by `restoreMediaItem` after hydration) are live and should
+  // render — only previously-saved blob URLs from a prior session are
+  // dead, and `onError` swaps to the icon when we hit one. The
+  // serializer already strips persisted blob URLs on save + load, so in
+  // practice only fresh in-memory ones reach this code.
+  const usable = !!thumbnailUrl && !failed;
+  return (
+    <>
+      {usable ? (
+        <img
+          src={thumbnailUrl!}
+          alt={alt}
+          className="w-full h-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-background-tertiary">
+          <Icon size={iconSize} className={iconColor} />
+        </div>
+      )}
+      {isHydrating && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
+          <span
+            className="animate-spin rounded-full border-2 border-white/30 border-t-white"
+            style={{ width: spinnerSize, height: spinnerSize }}
+          />
+        </div>
+      )}
+    </>
+  );
+};
+
 const MediaThumbnail: React.FC<{
   item: MediaItem;
   isSelected: boolean;
@@ -216,6 +272,9 @@ const MediaThumbnail: React.FC<{
   onAddToTimeline,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const isHydrating = useProjectStore((s) =>
+    s.hydratingMediaIds.has(item.id),
+  );
 
   const getIcon = () => {
     switch (item.type) {
@@ -314,13 +373,15 @@ const MediaThumbnail: React.FC<{
       >
         {/* Small thumbnail */}
         <div className="w-12 h-8 rounded bg-background-tertiary relative overflow-hidden flex-shrink-0">
-          {item.thumbnailUrl ? (
-            <img src={item.thumbnailUrl} alt={item.name} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <Icon size={14} className={iconColor} />
-            </div>
-          )}
+          <MediaThumbImage
+            thumbnailUrl={item.thumbnailUrl}
+            alt={item.name}
+            icon={Icon}
+            iconSize={14}
+            iconColor={iconColor}
+            isHydrating={isHydrating}
+            spinnerSize={12}
+          />
           {!item.isPlaceholder && (
             <div className="absolute inset-0 flex items-center justify-center bg-yellow-500/10">
               <AlertTriangle size={12} className="text-yellow-500/70" />
@@ -427,15 +488,19 @@ const MediaThumbnail: React.FC<{
         className={`aspect-video bg-background-tertiary rounded-lg border-2 relative group cursor-pointer transition-all overflow-hidden shadow-sm ${borderClass}`}
       >
         {/* Thumbnail or placeholder */}
-        {item.thumbnailUrl ? (
-          <img
-            src={item.thumbnailUrl}
-            alt={item.name}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-background-tertiary">
-            <Icon size={thumbnailIconSize} className={iconColor} />
+        <MediaThumbImage
+          thumbnailUrl={item.thumbnailUrl}
+          alt={item.name}
+          icon={Icon}
+          iconSize={thumbnailIconSize}
+          iconColor={iconColor}
+          isHydrating={isHydrating}
+          spinnerSize={20}
+        />
+        {isHydrating && (
+          <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/70 rounded text-[8px] text-white font-medium flex items-center gap-1">
+            <span className="h-2 w-2 animate-spin rounded-full border border-white/40 border-t-white" />
+            Loading
           </div>
         )}
 

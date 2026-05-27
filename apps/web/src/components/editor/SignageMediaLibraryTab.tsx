@@ -105,8 +105,14 @@ const LibraryMediaThumbnail: React.FC<{
   isImporting: boolean;
 }> = ({ item, onImport, isImporting }) => {
   const [hovered, setHovered] = useState(false);
+  const [thumbFailed, setThumbFailed] = useState(false);
   const isVideo = (item.type ?? "").toLowerCase().startsWith("video/");
-  const thumb = resolveSignageAssetUrl(item.thumbnailUrl);
+  const resolvedThumb = resolveSignageAssetUrl(item.thumbnailUrl);
+  // Try whatever URL we have (HTTP from backend or `blob:` minted by
+  // the current session). `onError` falls back to the icon for any
+  // dead URL — covers 404s, expired CDN links, and the rare case of
+  // a blob URL whose backing Blob was GC'd.
+  const thumb = resolvedThumb && !thumbFailed ? resolvedThumb : null;
 
   return (
     <div className="flex flex-col">
@@ -120,6 +126,7 @@ const LibraryMediaThumbnail: React.FC<{
             src={thumb}
             alt={item.name}
             className="w-full h-full object-cover"
+            onError={() => setThumbFailed(true)}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-background-tertiary">

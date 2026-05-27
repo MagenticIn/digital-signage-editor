@@ -415,7 +415,11 @@ export class CompositionRenderer {
     return new Promise((resolve, reject) => {
       const video = document.createElement("video");
       video.crossOrigin = "anonymous";
-      video.preload = "auto";
+      // `metadata`, not `auto`: we resolve on `loadeddata` which fires
+      // once the first frame is decoded — that only needs the moov +
+      // a few keyframe bytes via HTTP Range. `auto` would race to
+      // download the entire file before resolving the Promise.
+      video.preload = "metadata";
       video.onloadeddata = () => resolve(video);
       video.onerror = reject;
       video.src = url;

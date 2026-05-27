@@ -2,6 +2,10 @@ import type { Project, MediaItem } from "../types";
 import type { IStorageEngine, MediaRecord } from "./types";
 import type { ValidationResult, ProjectFileWithMetadata } from "./schema-types";
 
+function isBlobUrl(url: string | null | undefined): boolean {
+  return typeof url === "string" && url.startsWith("blob:");
+}
+
 export interface ProjectFile {
   readonly version: string;
   readonly project: Project;
@@ -61,8 +65,13 @@ export class ProjectSerializer {
             ...item,
             isPlaceholder: true,
             // Keep the durable library URL when present; fall back to thumbnail
-            // only when the item was never linked to a remote source.
-            originalUrl: item.originalUrl ?? item.thumbnailUrl ?? undefined,
+            // only when the item was never linked to a remote source. NEVER
+            // promote a `blob:` URL here — those don't survive a reload and
+            // would surface as `ERR_FILE_NOT_FOUND` in the next session.
+            originalUrl:
+              item.originalUrl ??
+              (isBlobUrl(item.thumbnailUrl) ? undefined : item.thumbnailUrl ?? undefined),
+            thumbnailUrl: isBlobUrl(item.thumbnailUrl) ? null : item.thumbnailUrl,
           };
         }
         return item;
@@ -252,6 +261,14 @@ export class ProjectSerializer {
         blob: null,
         fileHandle: null,
         waveformData: null,
+        // `blob:` URLs reference an in-memory Blob owned by the current
+        // page. They become dead the moment the page reloads (and are
+        // guaranteed dead in incognito where IndexedDB is per-session).
+        // Persisting them produces `ERR_FILE_NOT_FOUND` the next time
+        // an <img> / <video> tries to load the saved URL. Drop them at
+        // serialize time so the only persisted URL is `originalUrl`
+        // (a real HTTP URL) or null (regenerate on demand).
+        thumbnailUrl: isBlobUrl(item.thumbnailUrl) ? null : item.thumbnailUrl,
       }),
     );
 

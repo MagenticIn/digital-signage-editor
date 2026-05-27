@@ -12,6 +12,7 @@ import { KeyboardShortcutsOverlay } from "./KeyboardShortcutsOverlay";
 import { PanelErrorBoundary } from "../ErrorBoundary";
 import { SpotlightTour, MoGraphTour } from "./tour";
 import { SettingsDialog } from "./settings/SettingsDialog";
+import { AgeruWordmark } from "../AgeruWordmark";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useEngineStore } from "../../stores/engine-store";
@@ -184,16 +185,19 @@ export const EditorInterface: React.FC = () => {
   const timelineDuration = useProjectStore((s) => s.project.timeline.duration);
   const playDuration = useProjectStore((s) => s.project.settings.playDuration);
   const widgets = useSignageWidgetStore((s) => s.widgets);
+  const hydratingMediaIds = useProjectStore((s) => s.hydratingMediaIds);
+  const isHydrating = hydratingMediaIds.size > 0;
   const hasAutoplayed = useRef(false);
   useEffect(() => {
     if (!isPreview) return;
     if (!initialized) return;
+    if (isHydrating) return;
     if (hasAutoplayed.current) return;
     hasAutoplayed.current = true;
     const { seekTo, play } = useTimelineStore.getState();
     seekTo(0);
     play();
-  }, [isPreview, initialized]);
+  }, [isPreview, initialized, isHydrating]);
   useEffect(() => {
     if (!isPreview) return;
     if (playbackState !== "playing") return;
@@ -378,7 +382,7 @@ export const EditorInterface: React.FC = () => {
       {/* Workspace Area — AssetsPanel and InspectorPanel run full height; the
           middle column stacks Preview on top of Timeline so the timeline starts
           where the preview starts (right edge of AssetsPanel). */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <div className="flex-1 flex overflow-hidden min-h-0 relative">
         {!isPreview && (panels.mediaLibrary?.visible ?? true) ? (
           <PanelErrorBoundary name="Assets Panel">
             <AssetsPanel />
@@ -440,6 +444,12 @@ export const EditorInterface: React.FC = () => {
               copiedKeyframes={copiedKeyframes}
             />
           </PanelErrorBoundary>
+        )}
+
+        {isPreview && isHydrating && (
+          <div className="absolute inset-0 z-40 bg-black flex items-center justify-center transition-opacity duration-300">
+            <AgeruWordmark className="text-white text-7xl animate-pulse" />
+          </div>
         )}
       </div>
 

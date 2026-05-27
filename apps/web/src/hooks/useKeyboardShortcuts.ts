@@ -40,6 +40,7 @@ export function useKeyboardShortcuts() {
   } = useTimelineStore();
 
   const handlePlayPause = useCallback(() => {
+    if (useProjectStore.getState().hydratingMediaIds.size > 0) return;
     togglePlayback();
   }, [togglePlayback]);
 

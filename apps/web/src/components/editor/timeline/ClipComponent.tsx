@@ -48,6 +48,12 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   onTrimClip,
 }) => {
   const { getMediaItem } = useProjectStore();
+  // Subscribe specifically to this clip's hydration state — Set
+  // membership is selector-stable so this only re-renders when the
+  // pump starts/finishes work on THIS mediaId.
+  const isHydrating = useProjectStore((s) =>
+    s.hydratingMediaIds.has(clip.mediaId),
+  );
   const { snapSettings } = useUIStore();
   const { playheadPosition } = useTimelineStore();
   const mediaItem = getMediaItem(clip.mediaId);
@@ -500,6 +506,20 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 
       {isSelected && (
         <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none shadow-[inset_0_0_10px_rgba(34,197,94,0.2)]" />
+      )}
+
+      {/* Hydration overlay — visible while the project store is
+          downloading this clip's source bytes from the backend.
+          Surfaces the "please wait, the video is loading" UX without
+          modifying the underlying playback path; the canvas keeps
+          streaming via HTTP Range until the in-memory Blob lands. */}
+      {isHydrating && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/55 pointer-events-none rounded-lg">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+          <span className="ml-2 text-[10px] font-medium text-white/95 drop-shadow">
+            Loading video…
+          </span>
+        </div>
       )}
 
       {(isVideo || isImage || isAudio) && onTrimClip && (

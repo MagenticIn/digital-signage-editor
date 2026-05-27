@@ -16,6 +16,7 @@ import {
   Maximize2,
   Minimize2,
   Move,
+  Loader2,
 } from "lucide-react";
 import { IconButton } from "@openreel/ui";
 import { useProjectStore } from "../../stores/project-store";
@@ -84,6 +85,8 @@ import {
   getAnimatedTransform,
   applyEmphasisAnimation,
   CropModeView,
+  getRemoteArrayBuffer,
+  getRemoteImageBitmap,
   MotionPathOverlay,
   ParticleRenderer,
 } from "./preview/index";
@@ -351,6 +354,8 @@ export const Preview: React.FC = () => {
   // when any part of the project changes (including clips)
   const project = useProjectStore((state) => state.project);
   const getMediaItem = useProjectStore((state) => state.getMediaItem);
+  const hydratingMediaIds = useProjectStore((state) => state.hydratingMediaIds);
+  const isHydrating = hydratingMediaIds.size > 0;
 
   // Get text clips from TitleEngine
   const getTitleEngine = useEngineStore((state) => state.getTitleEngine);
@@ -957,11 +962,18 @@ export const Preview: React.FC = () => {
                 if (mediaItem.blob) {
                   arrayBuffer = await mediaItem.blob.arrayBuffer();
                 } else if (mediaItem.originalUrl) {
-                  const r = await fetch(mediaItem.originalUrl);
-                  if (r.ok) arrayBuffer = await r.arrayBuffer();
+                  // Shared cache: identical concurrent calls for the
+                  // same URL share one fetch instead of stacking N
+                  // parallel network requests against the backend.
+                  arrayBuffer = await getRemoteArrayBuffer(
+                    mediaItem.originalUrl,
+                  );
                 }
                 if (!arrayBuffer) continue;
-                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                // decodeAudioData detaches its input; clone so the
+                // cached entry stays usable.
+                const decodable = arrayBuffer.slice(0);
+                audioBuffer = await audioContext.decodeAudioData(decodable);
                 audioBufferCacheRef.current.set(audioClip.mediaId, audioBuffer);
               } catch (error) {
                 console.warn(
@@ -1035,9 +1047,11 @@ export const Preview: React.FC = () => {
 
   const preDecodeAllAudioBuffers = useCallback(async (): Promise<void> => {
     const tracks = timelineTracksRef.current;
-    const audioTracks = tracks.filter((t) => t.type === "audio" && !t.hidden);
-    const videoTracks = tracks.filter(
-      (t) => (t.type === "video" || t.type === "image") && !t.hidden,
+    // Only audio-bearing tracks need pre-decoded buffers. Image tracks
+    // have no audio; skipping them removes a third of the pointless
+    // fetches the old loop was firing for image-only clips.
+    const audioBearingTracks = tracks.filter(
+      (t) => (t.type === "audio" || t.type === "video") && !t.hidden && !t.muted,
     );
 
     if (!audioGraphRef.current) {
@@ -1046,31 +1060,45 @@ export const Preview: React.FC = () => {
     const audioGraph = audioGraphRef.current;
     const audioContext = audioGraph.getAudioContext();
 
-    const allTracks = [...audioTracks, ...videoTracks];
+    // Scope to clips that might actually play soon. The runtime audio
+    // scheduler operates with a ~1 s lookahead at the current playhead;
+    // we expand that to a 30 s window so seeking forward still has its
+    // audio ready. Buffers stay in the cache once decoded so a longer
+    // window doesn't cost extra after the first pass.
+    const playhead = getMasterClock().currentTime ?? 0;
+    const WINDOW_START = Math.max(0, playhead - 1);
+    const WINDOW_END = playhead + 30;
 
-    for (const track of allTracks) {
+    for (const track of audioBearingTracks) {
       for (const clip of track.clips) {
-        if (audioBufferCacheRef.current.has(clip.mediaId)) {
-          continue;
-        }
+        if (audioBufferCacheRef.current.has(clip.mediaId)) continue;
+
+        const clipEnd = clip.startTime + clip.duration;
+        if (clipEnd < WINDOW_START || clip.startTime > WINDOW_END) continue;
 
         const mediaItem = getMediaItem(clip.mediaId);
-        if (!mediaItem || (!mediaItem.blob && !mediaItem.originalUrl)) {
-          continue;
-        }
+        if (!mediaItem || (!mediaItem.blob && !mediaItem.originalUrl)) continue;
 
         try {
           let arrayBuffer: ArrayBuffer | null = null;
           if (mediaItem.blob) {
             arrayBuffer = await mediaItem.blob.arrayBuffer();
           } else if (mediaItem.originalUrl) {
-            const r = await fetch(mediaItem.originalUrl);
-            if (r.ok) arrayBuffer = await r.arrayBuffer();
+            // Shared cache: concurrent callers for the same URL share
+            // one fetch, and the bytes are kept around so the next
+            // pre-decode pass doesn't re-download.
+            arrayBuffer = await getRemoteArrayBuffer(mediaItem.originalUrl);
           }
           if (!arrayBuffer) continue;
-          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          // decodeAudioData detaches the input ArrayBuffer; clone first
+          // so the shared cache retains a usable copy for later seeks.
+          const decodable = arrayBuffer.slice(0);
+          const audioBuffer = await audioContext.decodeAudioData(decodable);
           audioBufferCacheRef.current.set(clip.mediaId, audioBuffer);
         } catch {
+          // Network or decode failure — leave the cache empty so a
+          // future call can retry. Silent because the audio scheduler
+          // already tolerates a missing buffer (skips the clip).
         }
       }
     }
@@ -1161,9 +1189,11 @@ export const Preview: React.FC = () => {
           const url = mediaItem.originalUrl;
           const fetchPromise: Promise<ImageBitmap | null> = (async () => {
             try {
-              const resp = await fetch(url);
-              const blob = await resp.blob();
-              const bitmap = await createImageBitmap(blob);
+              // Shared cache dedups concurrent requests for the same
+              // URL and caps in-flight requests at 2 — was previously
+              // an unbounded `fetch(url)` per clip that hammered the
+              // backend on layouts referencing many library images.
+              const bitmap = await getRemoteImageBitmap(url);
               imageBitmapCacheRef.current.set(clip.id, bitmap);
               return bitmap;
             } catch {
@@ -1212,7 +1242,14 @@ export const Preview: React.FC = () => {
           video.src = url;
           video.muted = true;
           video.playsInline = true;
-          video.preload = "auto";
+          // `metadata` (not `auto`) tells the browser to fetch only
+          // the moov/header so loadedmetadata fires quickly; the
+          // actual decode pulls byte ranges around the requested
+          // frame on demand (backend supports HTTP Range). With
+          // `auto`, every offscreen video raced to fully download
+          // its source, which triggered 429 on a project with 10+
+          // library-only videos.
+          video.preload = "metadata";
           video.crossOrigin = "anonymous";
 
           await new Promise<void>((resolve, reject) => {
@@ -2007,13 +2044,30 @@ export const Preview: React.FC = () => {
       const loadPromises: Promise<void>[] = [];
 
       for (const { clip, mediaItem } of clips) {
-        if (!videoCache.has(clip.mediaId) && mediaItem.blob) {
-          const url = URL.createObjectURL(mediaItem.blob);
+        if (!videoCache.has(clip.mediaId)) {
+          // Prefer the in-memory blob (instant seek, no network);
+          // fall back to the remote URL via Range so library-only
+          // videos still play without the editor having to fetch
+          // the full file into RAM.
+          let url: string | null = null;
+          let isObjectUrl = false;
+          if (mediaItem.blob) {
+            url = URL.createObjectURL(mediaItem.blob);
+            isObjectUrl = true;
+          } else if (mediaItem.originalUrl) {
+            url = mediaItem.originalUrl;
+          }
+          if (!url) continue;
           const video = document.createElement("video");
           video.src = url;
           video.muted = true;
           video.playsInline = true;
-          video.preload = "auto";
+          // `metadata` instead of `auto`: only the header is fetched
+          // up-front; the player will pull byte ranges around the
+          // playhead lazily. Stops 10+ videos from racing for full
+          // downloads simultaneously.
+          video.preload = "metadata";
+          if (!isObjectUrl) video.crossOrigin = "anonymous";
 
           videoCache.set(clip.mediaId, { video, url });
 
@@ -2899,9 +2953,12 @@ export const Preview: React.FC = () => {
               if (mediaItem.blob) {
                 bitmap = await createImageBitmap(mediaItem.blob);
               } else if (mediaItem.originalUrl) {
-                const resp = await fetch(mediaItem.originalUrl);
-                const fetchedBlob = await resp.blob();
-                bitmap = await createImageBitmap(fetchedBlob);
+                // Shared cache: same URL across multiple image clips
+                // (common when the same library image is reused) gets
+                // one fetch + one decode. Concurrent calls dedup; the
+                // bitmap is owned by the cache, so DO NOT close it
+                // here.
+                bitmap = await getRemoteImageBitmap(mediaItem.originalUrl);
               } else {
                 continue;
               }
@@ -5855,9 +5912,13 @@ export const Preview: React.FC = () => {
             onClick={() => {
               togglePlayback();
             }}
-            className="w-10 h-10 rounded-full bg-primary hover:bg-primary-hover active:bg-primary-active flex items-center justify-center text-white transition-all shadow-[0_0_15px_rgba(34,197,94,0.4)] hover:shadow-[0_0_25px_rgba(34,197,94,0.6)] transform hover:scale-105"
+            disabled={isHydrating}
+            title={isHydrating ? "Waiting for videos to load…" : undefined}
+            className="w-10 h-10 rounded-full bg-primary hover:bg-primary-hover active:bg-primary-active flex items-center justify-center text-white transition-all shadow-[0_0_15px_rgba(34,197,94,0.4)] hover:shadow-[0_0_25px_rgba(34,197,94,0.6)] transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:bg-primary disabled:hover:shadow-[0_0_15px_rgba(34,197,94,0.4)]"
           >
-            {isPlaying ? (
+            {isHydrating ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : isPlaying ? (
               <Pause size={18} fill="currentColor" />
             ) : (
               <Play size={18} fill="currentColor" className="ml-0.5" />
