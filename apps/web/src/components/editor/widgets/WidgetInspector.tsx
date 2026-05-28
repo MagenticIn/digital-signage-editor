@@ -45,6 +45,7 @@ import type {
   VideoWidgetConfig,
 } from "../../../types/widgets";
 import { ColorOpacityInput } from "./ColorOpacityInput";
+import { toEmbeddableUrl } from "./url-embed";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -578,27 +579,9 @@ const IframeFields = ({
         onClick={() => {
           const raw = (config.src || "").trim();
           if (!raw) return;
-          const withProtocol =
-            raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://${raw}`;
-          try {
-            const url = new URL(withProtocol);
-            const host = url.hostname.toLowerCase();
-            const path = url.pathname;
-            if (host.includes("docs.google.com")) {
-              if (path.includes("/document/") || path.includes("/presentation/")) {
-                url.pathname = path.replace(/\/edit.*$/, "/preview");
-                url.search = "";
-                onChange({ ...config, src: url.toString() });
-                return;
-              }
-              if (path.includes("/spreadsheets/")) {
-                url.pathname = path.replace(/\/edit.*$/, "/preview");
-                onChange({ ...config, src: url.toString() });
-                return;
-              }
-            }
-          } catch {
-            // ignore
+          const embeddable = toEmbeddableUrl(raw);
+          if (embeddable && embeddable !== config.src) {
+            onChange({ ...config, src: embeddable });
           }
         }}
       >
@@ -606,7 +589,8 @@ const IframeFields = ({
       </button>
     </div>
     <p className="text-[10px] text-text-muted">
-      Some sites block iframe embedding via security headers (X-Frame-Options / CSP).
+      YouTube watch/share links are auto-converted to their embeddable form. Some other
+      sites block iframe embedding via security headers (X-Frame-Options / CSP).
     </p>
     <div>
       <label className={labelClass}>Frame title</label>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Loader2, Globe, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { IframeConfig } from "../../../types/widgets";
+import { toEmbeddableUrl, isVideoEmbedUrl } from "./url-embed";
 
 interface IframeWidgetProps {
   config: IframeConfig;
@@ -30,36 +31,8 @@ export const IframeWidget: React.FC<IframeWidgetProps> = ({ config, interactive 
     return () => observer.disconnect();
   }, []);
 
-  const normalizedSrc = useMemo(() => {
-    const raw = (config.src || "").trim();
-    if (!raw) return "";
-    const withProtocol =
-      raw.startsWith("http://") || raw.startsWith("https://")
-        ? raw
-        : `https://${raw}`;
-    try {
-      const url = new URL(withProtocol);
-      const host = url.hostname.toLowerCase();
-      const path = url.pathname;
-
-      // Convert common Google Docs edit/view links to preview links that are embeddable more often.
-      if (host.includes("docs.google.com")) {
-        if (path.includes("/document/") || path.includes("/presentation/")) {
-          url.pathname = path.replace(/\/edit.*$/, "/preview");
-          url.search = "";
-          return url.toString();
-        }
-        if (path.includes("/spreadsheets/")) {
-          url.pathname = path.replace(/\/edit.*$/, "/preview");
-          return url.toString();
-        }
-      }
-
-      return url.toString();
-    } catch {
-      return withProtocol;
-    }
-  }, [config.src]);
+  const normalizedSrc = useMemo(() => toEmbeddableUrl(config.src), [config.src]);
+  const isVideo = useMemo(() => isVideoEmbedUrl(normalizedSrc), [normalizedSrc]);
 
   const [timerId, setTimerId] = useState<number | null>(null);
 
@@ -97,12 +70,16 @@ export const IframeWidget: React.FC<IframeWidgetProps> = ({ config, interactive 
     return `https://image.thum.io/get/width/1600/noanimate/${encoded}?v=${refreshToken}`;
   }, [normalizedSrc, refreshToken]);
 
+  // A video-player embed (YouTube/Vimeo) always renders as a live iframe —
+  // a static screenshot of a video is meaningless, so never fall to snapshot.
   const showIframe =
     normalizedSrc &&
-    (config.renderMode === "iframe" ||
+    (isVideo ||
+      config.renderMode === "iframe" ||
       (config.renderMode === "auto" && !timedOut));
   const showSnapshot =
     normalizedSrc &&
+    !isVideo &&
     (config.renderMode === "snapshot" ||
       (config.renderMode === "auto" && timedOut));
 
@@ -138,6 +115,7 @@ export const IframeWidget: React.FC<IframeWidgetProps> = ({ config, interactive 
             src={normalizedSrc}
             title={config.title || "Embedded frame"}
             className="w-full h-full border-0"
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
             allowFullScreen={config.allowFullscreen}
             sandbox={config.sandbox || undefined}
             referrerPolicy="no-referrer-when-downgrade"
