@@ -46,6 +46,8 @@ import type {
 } from "../../../types/widgets";
 import { ColorOpacityInput } from "./ColorOpacityInput";
 import { toEmbeddableUrl } from "./url-embed";
+import { TIMEZONE_GROUPS } from "./timezones";
+import { DateTimePicker } from "./DateTimePicker";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -305,16 +307,15 @@ const ClockFields = ({ config, onChange }: { config: ClockConfig; onChange: (v: 
       </select>
     </div>
     <select className={inputClass} value={config.timezone} onChange={(e) => onChange({ ...config, timezone: e.target.value })}>
-      <option value="Asia/Kolkata">IST (Asia/Kolkata)</option>
-      <option value="UTC">UTC</option>
-      <option value="America/New_York">EST (New York)</option>
-      <option value="America/Chicago">CST (Chicago)</option>
-      <option value="America/Denver">MST (Denver)</option>
-      <option value="America/Los_Angeles">PST (Los Angeles)</option>
-      <option value="Europe/London">GMT (London)</option>
-      <option value="Europe/Paris">CET (Paris)</option>
-      <option value="Asia/Tokyo">JST (Tokyo)</option>
-      <option value="Australia/Sydney">AEDT (Sydney)</option>
+      {TIMEZONE_GROUPS.map((group) => (
+        <optgroup key={group.country} label={group.country}>
+          {group.zones.map((zone) => (
+            <option key={zone.tz} value={zone.tz}>
+              {zone.city === group.country ? zone.city : `${zone.city} — ${group.country}`}
+            </option>
+          ))}
+        </optgroup>
+      ))}
     </select>
     <label className="text-xs flex items-center gap-2">
       <input type="checkbox" checked={config.showSeconds} onChange={(e) => onChange({ ...config, showSeconds: e.target.checked })} />Show seconds
@@ -344,11 +345,9 @@ const CountdownFields = ({ config, onChange }: { config: CountdownConfig; onChan
   <div className={sectionClass}>
     <div>
       <label className={labelClass}>Target date / time</label>
-      <input
-        type="datetime-local"
-        className={inputClass}
-        value={config.targetDateTime.slice(0, 16)}
-        onChange={(e) => onChange({ ...config, targetDateTime: new Date(e.target.value).toISOString() })}
+      <DateTimePicker
+        value={config.targetDateTime}
+        onChange={(iso) => onChange({ ...config, targetDateTime: iso })}
       />
     </div>
     <div>
@@ -588,9 +587,22 @@ const IframeFields = ({
         Convert to embeddable URL
       </button>
     </div>
+    <label className="text-xs flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={config.proxyEmbed ?? false}
+        onChange={(e) => onChange({ ...config, proxyEmbed: e.target.checked })}
+      />
+      Bypass frame blocking (proxy)
+    </label>
     <p className="text-[10px] text-text-muted">
-      YouTube watch/share links are auto-converted to their embeddable form. Some other
-      sites block iframe embedding via security headers (X-Frame-Options / CSP).
+      YouTube watch/share links are auto-converted to their embeddable form. Some sites
+      (e.g. pub.dev) block iframe embedding with the X-Frame-Options / CSP
+      frame-ancestors response headers — the browser enforces these inside an
+      &lt;iframe&gt;, which is why such pages fall back to a snapshot here even though they
+      open fine in a full WebView. Enable "Bypass frame blocking" to route the page through
+      a same-origin proxy that strips those headers so it renders live; complex apps and
+      login-gated sites may still need the snapshot fallback.
     </p>
     <div>
       <label className={labelClass}>Frame title</label>

@@ -34,6 +34,18 @@ export const IframeWidget: React.FC<IframeWidgetProps> = ({ config, interactive 
   const normalizedSrc = useMemo(() => toEmbeddableUrl(config.src), [config.src]);
   const isVideo = useMemo(() => isVideoEmbedUrl(normalizedSrc), [normalizedSrc]);
 
+  // When proxy is enabled, route non-video embeds through the same-origin
+  // /api/embed endpoint, which strips X-Frame-Options / CSP frame-ancestors so
+  // sites that block framing render live. Video embeds (YouTube/Vimeo) keep
+  // their real origin and bypass the proxy.
+  const frameSrc = useMemo(() => {
+    if (!normalizedSrc) return "";
+    if (config.proxyEmbed && !isVideo) {
+      return `/api/embed?url=${encodeURIComponent(normalizedSrc)}`;
+    }
+    return normalizedSrc;
+  }, [normalizedSrc, config.proxyEmbed, isVideo]);
+
   const [timerId, setTimerId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -112,7 +124,7 @@ export const IframeWidget: React.FC<IframeWidgetProps> = ({ config, interactive 
         {showIframe && (
           <iframe
             {...{ credentialless: "true" }}
-            src={normalizedSrc}
+            src={frameSrc}
             title={config.title || "Embedded frame"}
             className="w-full h-full border-0"
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen"

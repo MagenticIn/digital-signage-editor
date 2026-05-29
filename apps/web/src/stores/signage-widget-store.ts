@@ -156,6 +156,7 @@ export const defaultConfigs: DefaultConfigs = {
     borderRadius: 8,
     zoom: 1,
     transparentBackground: true,
+    proxyEmbed: false,
   },
   notification: {
     title: "Notification",

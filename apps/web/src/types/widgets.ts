@@ -147,6 +147,8 @@ export interface IframeConfig {
   borderRadius: number;
   zoom: number;
   transparentBackground: boolean;
+  /** Route the embed through the same-origin proxy that strips X-Frame-Options / CSP frame-ancestors, so sites that block framing render live. */
+  proxyEmbed?: boolean;
 }
 
 export interface TextWidgetConfig {
