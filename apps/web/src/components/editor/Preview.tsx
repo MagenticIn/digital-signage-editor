@@ -100,6 +100,7 @@ import { PDFWidget } from "./widgets/PDFWidget";
 import { PowerPointWidget } from "./widgets/PowerPointWidget";
 import { TickerWidget } from "./widgets/TickerWidget";
 import { VideoWidget } from "./widgets/VideoWidget";
+import { ImageWidget } from "./widgets/ImageWidget";
 import { AudioWidget } from "./widgets/AudioWidget";
 import { IframeWidget } from "./widgets/IframeWidget";
 import type { MotionPathConfig, GSAPMotionPathPoint } from "@openreel/core";
@@ -5109,23 +5110,7 @@ export const Preview: React.FC = () => {
       _selected: boolean = false,
     ) => {
       if (widget.type === "image") {
-        const config = widget.config as ImageWidgetConfig;
-        if (!config.imageUrl) {
-          return <div className="w-full h-full flex items-center justify-center text-xs text-white/70">Image URL not set</div>;
-        }
-        return (
-          <div
-            className="w-full h-full"
-            style={{ backgroundColor: config.backgroundColor }}
-          >
-            <img
-              src={config.imageUrl}
-              alt="Widget image"
-              className="w-full h-full"
-              style={{ objectFit: config.objectFit, display: "block" }}
-            />
-          </div>
-        );
+        return <ImageWidget config={widget.config as ImageWidgetConfig} />;
       }
       if (widget.type === "video") {
         return (

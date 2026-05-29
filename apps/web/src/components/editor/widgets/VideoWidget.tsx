@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { VideoWidgetConfig } from "../../../types/widgets";
+import { MediaLoadingOverlay } from "./MediaLoadingOverlay";
 
 interface VideoWidgetProps {
   config: VideoWidgetConfig;
@@ -20,14 +21,36 @@ export const VideoWidget: React.FC<VideoWidgetProps> = ({ config, widgetTime, is
   // `error` exposes load failures that would otherwise be silent.
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
+  // Separate from the play-gate: drives the loading overlay, which stays up
+  // until the clip is buffered enough to play through (not just first frame).
+  const [fullyLoaded, setFullyLoaded] = useState(false);
+
   // Reset to 0 whenever the source changes — covers config swaps and re-mounts.
   // Also reset the readiness state so the loader covers the new decode.
   useEffect(() => {
     setStatus("loading");
+    setFullyLoaded(false);
     const el = videoRef.current;
     if (!el) return;
     el.currentTime = 0;
   }, [config.videoUrl]);
+
+  // Hide the overlay once the element reports it can play through, with a
+  // `progress`-based fallback for browsers that fire `canplaythrough`
+  // unreliably. Never touches `src`, so cached media stays cached.
+  const handleProgress = () => {
+    const el = videoRef.current;
+    if (!el || fullyLoaded) return;
+    const { duration, buffered } = el;
+    if (
+      Number.isFinite(duration) &&
+      duration > 0 &&
+      buffered.length > 0 &&
+      buffered.end(buffered.length - 1) >= duration - 0.25
+    ) {
+      setFullyLoaded(true);
+    }
+  };
 
   // Sync currentTime + play/pause with the timeline on every relevant change.
   useEffect(() => {
@@ -86,47 +109,22 @@ export const VideoWidget: React.FC<VideoWidgetProps> = ({ config, widgetTime, is
         preload="metadata"
         crossOrigin="anonymous"
         onLoadedData={() => setStatus("ready")}
+        onCanPlay={() => setStatus("ready")}
+        onCanPlayThrough={() => {
+          setStatus("ready");
+          setFullyLoaded(true);
+        }}
+        onProgress={handleProgress}
+        onWaiting={() => setFullyLoaded(false)}
         onError={() => setStatus("error")}
       />
-      {status === "loading" && <VideoFirstFrameOverlay label="Setting up video…" />}
-      {status === "error" && (
-        <VideoFirstFrameOverlay label="Video failed to load" tone="error" />
+      {status === "error" ? (
+        <MediaLoadingOverlay label="Video failed to load" tone="error" />
+      ) : (
+        !fullyLoaded && <MediaLoadingOverlay label="Loading video…" />
       )}
     </div>
   );
 };
-
-interface OverlayProps {
-  label: string;
-  tone?: "info" | "error";
-}
-
-const VideoFirstFrameOverlay: React.FC<OverlayProps> = ({ label, tone = "info" }) => (
-  <div
-    className="absolute inset-0 flex items-center justify-center pointer-events-none select-none"
-    style={{
-      background: tone === "error" ? "rgba(40,0,0,0.65)" : "rgba(0,0,0,0.55)",
-      color: "rgba(255,255,255,0.92)",
-      fontSize: 12,
-      letterSpacing: 0.2,
-    }}
-    aria-live="polite"
-  >
-    {tone === "info" && (
-      <span
-        className="inline-block animate-spin"
-        style={{
-          width: 14,
-          height: 14,
-          borderRadius: "50%",
-          border: "2px solid rgba(255,255,255,0.35)",
-          borderTopColor: "rgba(255,255,255,0.95)",
-          marginRight: 8,
-        }}
-      />
-    )}
-    {label}
-  </div>
-);
 
 export default VideoWidget;

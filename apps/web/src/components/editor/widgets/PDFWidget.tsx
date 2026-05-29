@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { PDFConfig } from "../../../types/widgets";
+import { MediaLoadingOverlay } from "./MediaLoadingOverlay";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -100,8 +101,8 @@ export const PDFWidget: React.FC<PDFWidgetProps> = ({ config, currentTime }) => 
   }
   if (!pageImage) {
     return (
-      <div ref={containerRef} className="w-full h-full flex items-center justify-center text-xs text-white/70 bg-black/30">
-        Loading PDF…
+      <div ref={containerRef} className="relative w-full h-full bg-black/30">
+        <MediaLoadingOverlay label="Loading PDF…" />
       </div>
     );
   }

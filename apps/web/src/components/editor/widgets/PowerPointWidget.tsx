@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { PowerPointConfig } from "../../../types/widgets";
+import { MediaLoadingOverlay } from "./MediaLoadingOverlay";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -92,7 +93,11 @@ export const PowerPointWidget: React.FC<PowerPointWidgetProps> = ({
   }, [pdfDoc, pageIndex]);
 
   if (isConverting) {
-    return <div className="text-white bg-black/70 px-3 py-1 rounded">Converting PowerPoint...</div>;
+    return (
+      <div className="relative w-full h-full bg-black/30">
+        <MediaLoadingOverlay label="Converting PowerPoint…" />
+      </div>
+    );
   }
   if (error) {
     return <div className="text-red-200 bg-red-900/70 px-3 py-1 rounded">{error}</div>;
@@ -108,8 +113,8 @@ export const PowerPointWidget: React.FC<PowerPointWidgetProps> = ({
   }
   if (!pageImage) {
     return (
-      <div className="w-full h-full flex items-center justify-center text-xs text-white/70 bg-black/30">
-        Converting slides…
+      <div className="relative w-full h-full bg-black/30">
+        <MediaLoadingOverlay label="Converting slides…" />
       </div>
     );
   }

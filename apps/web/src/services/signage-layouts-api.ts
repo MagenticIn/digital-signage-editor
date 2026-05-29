@@ -101,8 +101,8 @@ function getApiBase(): string | null {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const base = 'https://gsq-api.myageru.com/api/v1' // getApiBase();
-  const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZDA5OWEyYy1hYmY5LTQ1MmEtOWUwNS1kZTA3MzYwYzJiYWQiLCJlbWFpbCI6ImFubW9sQGdvbWFnZW50aWMuY29tIiwiaWF0IjoxNzgwMDQ3Njc0LCJleHAiOjE3ODAxMzQwNzR9.IutgKBZEGumcxcBHhQRXrzGYRFZ1RKYOexA3B1IPe0w' // getToken();
+  const base = getApiBase();
+  const token = getToken();
 
   if (!base || !token) {
     throw new Error("Signage backend not connected (missing JWT or API URL).");
