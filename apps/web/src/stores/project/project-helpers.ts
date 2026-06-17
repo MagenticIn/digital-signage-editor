@@ -8,6 +8,9 @@ export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {
   frameRate: 30,
   sampleRate: 48000,
   channels: 2,
+  // No explicit playDuration: the canvas duration is fully automatic and always
+  // tracks the longest timeline item (see InspectorPanel / Toolbar). Leaving it
+  // undefined keeps getEffectiveProjectDuration deriving from timeline.duration.
 };
 
 export function createDefaultTimeline(): Timeline {

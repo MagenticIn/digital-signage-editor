@@ -37,6 +37,14 @@ function coerceEditorProject(json: unknown): Project | null {
   }
   if (!project && looksLikeProject(j)) project = j as unknown as Project;
   if (!project) return null;
+  // Canvas duration is fully automatic in the editor — it always tracks the
+  // longest timeline item. Drop any playDuration that was materialized into the
+  // saved layout so reopening + editing keeps auto-adjusting (up or down). It is
+  // re-derived from the timeline and re-materialized on the next save.
+  project = {
+    ...project,
+    settings: { ...project.settings, playDuration: undefined },
+  };
   // The save flow synthesizes one `widget-track-*` per widget (clips tagged
   // `mediaId: "widget:<id>"`) so external replayers can iterate tracks
   // uniformly. The editor's canonical source for widgets is

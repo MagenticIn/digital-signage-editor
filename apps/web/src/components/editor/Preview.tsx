@@ -4913,7 +4913,7 @@ export const Preview: React.FC = () => {
       | "sw"
       | "se";
   } | null>(null);
-  const [lockWidgetAspectRatio, setLockWidgetAspectRatio] = useState(true);
+  const [lockWidgetAspectRatio, setLockWidgetAspectRatio] = useState(false);
   const [widgetGuides, setWidgetGuides] = useState<{ x: number[]; y: number[] }>({
     x: [],
     y: [],
@@ -4979,42 +4979,40 @@ export const Preview: React.FC = () => {
         const minH = 80;
         const aspectRatio = layout.width / Math.max(1, layout.height);
         if (resizingWidget.edge === "end") {
+          // Edge handles are single-axis: right edge changes width only.
           const nextWidth = Math.max(minW, snapValue(layout.width + dx, guideX));
           updateWidget(targetId, {
             layout: {
               ...layout,
               width: nextWidth,
-              ...(lockWidgetAspectRatio ? { height: Math.max(minH, nextWidth / aspectRatio) } : {}),
             },
           });
         } else if (resizingWidget.edge === "start") {
+          // Left edge changes width (and x) only.
           const nextWidth = Math.max(minW, layout.width - dx);
           updateWidget(targetId, {
             layout: {
               ...layout,
               x: Math.max(0, layout.x + (layout.width - nextWidth)),
               width: nextWidth,
-              ...(lockWidgetAspectRatio ? { height: Math.max(minH, nextWidth / aspectRatio) } : {}),
             },
           });
         } else if (resizingWidget.edge === "bottom") {
+          // Bottom edge changes height only.
           updateWidget(targetId, {
             layout: {
               ...layout,
               height: Math.max(minH, snapValue(layout.height + dy, guideY)),
-              ...(lockWidgetAspectRatio
-                ? { width: Math.max(minW, (layout.height + dy) * aspectRatio) }
-                : {}),
             },
           });
         } else if (resizingWidget.edge === "top") {
+          // Top edge changes height (and y) only.
           const nextHeight = Math.max(minH, layout.height - dy);
           updateWidget(targetId, {
             layout: {
               ...layout,
               y: Math.max(0, layout.y + (layout.height - nextHeight)),
               height: nextHeight,
-              ...(lockWidgetAspectRatio ? { width: Math.max(minW, nextHeight * aspectRatio) } : {}),
             },
           });
         } else if (resizingWidget.edge === "se") {

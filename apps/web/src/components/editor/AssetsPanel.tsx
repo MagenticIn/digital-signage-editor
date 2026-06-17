@@ -976,11 +976,12 @@ export const AssetsPanel: React.FC = () => {
         layout = { x: 40, y: 40, width: 800, height: 96 };
       }
 
-      // Span the full layout by default so a freshly-added widget is visible
-      // for the whole play time — override → auto-derived → 10 s fallback.
-      const layoutDuration =
-        project.settings.playDuration ?? project.timeline.duration ?? 0;
-      const widgetDuration = layoutDuration > 0 ? layoutDuration : 10;
+      // Span the current canvas duration on insert (= the longest existing
+      // item, or 60 s when the layout is empty) so a fresh widget covers the
+      // whole layout. The canvas auto-tracks items, so dragging this widget's
+      // timeline handle re-adjusts the canvas duration accordingly.
+      const widgetDuration =
+        project.timeline.duration > 0 ? project.timeline.duration : 60;
 
       addWidget({
         id: uuidv4(),
@@ -993,7 +994,7 @@ export const AssetsPanel: React.FC = () => {
         layout,
       });
     },
-    [addWidget, project.settings.playDuration, project.timeline.duration],
+    [addWidget, project.timeline.duration],
   );
 
   return (

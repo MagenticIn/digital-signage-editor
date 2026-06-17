@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  AlertCircle,
   Bold,
   Italic,
   Underline,
@@ -105,6 +106,13 @@ export const WidgetInspector: React.FC<WidgetInspectorProps> = ({ widget }) => {
     updateWidgetConfig(widget.id, config);
   };
 
+  // Parse a dimension input: allow 0 (and clamp negatives), keep previous value on empty/NaN.
+  const parseDim = (raw: string, prev: number) => {
+    if (raw.trim() === "") return prev;
+    const v = Number(raw);
+    return Number.isFinite(v) ? Math.max(0, v) : prev;
+  };
+
   return (
     <div className="space-y-3">
       <div className="rounded-lg border border-border p-3 bg-background-tertiary">
@@ -146,9 +154,14 @@ export const WidgetInspector: React.FC<WidgetInspectorProps> = ({ widget }) => {
           <label className="text-[10px] text-text-secondary">Duration</label>
           <input
             type="number"
+            min={0}
             className={inputClass}
             value={widget.duration}
-            onChange={(e) => updateWidget(widget.id, { duration: Number(e.target.value) || 1 })}
+            onChange={(e) =>
+              updateWidget(widget.id, {
+                duration: Math.max(0, Number(e.target.value) || 0),
+              })
+            }
           />
           <label className="text-[10px] text-text-secondary">X</label>
           <input
@@ -192,7 +205,7 @@ export const WidgetInspector: React.FC<WidgetInspectorProps> = ({ widget }) => {
                 layout: {
                   x: widget.layout?.x ?? 40,
                   y: widget.layout?.y ?? 40,
-                  width: Number(e.target.value) || 120,
+                  width: parseDim(e.target.value, widget.layout?.width ?? 360),
                   height: widget.layout?.height ?? 220,
                 },
               })
@@ -209,12 +222,24 @@ export const WidgetInspector: React.FC<WidgetInspectorProps> = ({ widget }) => {
                   x: widget.layout?.x ?? 40,
                   y: widget.layout?.y ?? 40,
                   width: widget.layout?.width ?? 360,
-                  height: Number(e.target.value) || 80,
+                  height: parseDim(e.target.value, widget.layout?.height ?? 220),
                 },
               })
             }
           />
         </div>
+        {(widget.layout?.width === 0 || widget.layout?.height === 0) && (
+          <div className="mt-2 flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/30 rounded">
+            <AlertCircle size={12} className="text-red-400 shrink-0" />
+            <span className="text-[10px] text-red-400">
+              {widget.layout?.width === 0 && widget.layout?.height === 0
+                ? "Width and height are 0 — this element won't be visible."
+                : widget.layout?.width === 0
+                  ? "Width is 0 — this element won't be visible."
+                  : "Height is 0 — this element won't be visible."}
+            </span>
+          </div>
+        )}
       </div>
 
       {widget.type === "clock" && (
