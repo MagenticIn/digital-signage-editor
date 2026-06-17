@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Cloud,
   CloudUpload,
-  Download,
   Film,
   Image as ImageIcon,
   Loader2,
@@ -115,8 +114,9 @@ const LibraryMediaThumbnail: React.FC<{
   item: SignageMediaItem;
   onImport: () => void;
   isImporting: boolean;
-}> = ({ item, onImport, isImporting }) => {
-  const [hovered, setHovered] = useState(false);
+}> = ({ item, isImporting }) => {
+  // `onImport` / `hovered` are only used by the commented-out download overlay.
+  const [, setHovered] = useState(false);
   const [thumbFailed, setThumbFailed] = useState(false);
   const isVideo = (item.type ?? "").toLowerCase().startsWith("video/");
   const resolvedThumb = resolveSignageAssetUrl(item.thumbnailUrl);
