@@ -12,6 +12,7 @@ import {
   ChevronRight,
   HardDrive,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 import {
   useSignageMediaStore,
@@ -19,9 +20,20 @@ import {
 } from "../../stores/signage-media-store";
 import type { SignageMediaItem } from "../../stores/signage-media-store";
 import { useProjectStore } from "../../stores/project-store";
-import { toLibraryMediaRef } from "./LibraryAssetPicker";
+import {
+  toLibraryMediaRef,
+  resolveLibraryAssetUrl,
+  useInViewOnce,
+  formatDuration,
+} from "./LibraryAssetPicker";
 import { toast } from "../../stores/notification-store";
 import { ScrollArea } from "@openreel/ui";
+import {
+  validateUploadFile,
+  UPLOAD_ACCEPT_ATTR,
+  UPLOAD_SIZE_SUMMARY,
+} from "./media-upload-limits";
+import { CircularProgress } from "./CircularProgress";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,9 +126,27 @@ const LibraryMediaThumbnail: React.FC<{
   // a blob URL whose backing Blob was GC'd.
   const thumb = resolvedThumb && !thumbFailed ? resolvedThumb : null;
 
+  // Video first frame + duration (lazy, like the library picker). The frame
+  // and metadata probe only load once the card scrolls into view.
+  const [rootRef, seen] = useInViewOnce<HTMLDivElement>();
+  const assetUrl = isVideo ? resolveLibraryAssetUrl(item) : null;
+  const backendDuration =
+    item.durationSeconds != null && item.durationSeconds > 0
+      ? item.durationSeconds
+      : null;
+  const [probedDuration, setProbedDuration] = useState<number | null>(null);
+  const duration = backendDuration ?? probedDuration;
+  const hasDuration = duration != null && duration > 0;
+  const needsProbe = isVideo && !backendDuration && !!assetUrl;
+  const onMeta = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const d = e.currentTarget.duration;
+    if (Number.isFinite(d) && d > 0) setProbedDuration(d);
+  };
+
   return (
     <div className="flex flex-col">
       <div
+        ref={rootRef}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         className="aspect-video bg-background-tertiary rounded-lg border-2 border-border hover:border-text-secondary relative group cursor-pointer transition-all overflow-hidden shadow-sm"
@@ -125,8 +155,20 @@ const LibraryMediaThumbnail: React.FC<{
           <img
             src={thumb}
             alt={item.name}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover"
             onError={() => setThumbFailed(true)}
+          />
+        ) : isVideo && assetUrl && seen ? (
+          // No backend poster — show the video's first frame once in view.
+          <video
+            src={`${assetUrl}#t=0.1`}
+            muted
+            playsInline
+            preload="metadata"
+            onLoadedMetadata={onMeta}
+            className="w-full h-full object-cover"
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-background-tertiary">
@@ -137,13 +179,30 @@ const LibraryMediaThumbnail: React.FC<{
             )}
           </div>
         )}
+        {/* Video has a poster but no backend duration → probe metadata once in view. */}
+        {seen && thumb && needsProbe && (
+          <video
+            src={assetUrl as string}
+            muted
+            preload="metadata"
+            onLoadedMetadata={onMeta}
+            className="hidden"
+          />
+        )}
+
+        {/* Duration badge (video) */}
+        {hasDuration && (
+          <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/70 rounded text-[9px] text-white font-mono">
+            {formatDuration(duration as number)}
+          </div>
+        )}
 
         {/* Size badge */}
         <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 rounded text-[9px] text-white font-mono">
           {formatBytes(item.size)}
         </div>
 
-        {/* Hover overlay */}
+        {/* Hover overlay — download/import option commented out
         {hovered && !isImporting && (
           <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center gap-2 animate-in fade-in duration-200">
             <button
@@ -158,6 +217,7 @@ const LibraryMediaThumbnail: React.FC<{
             </button>
           </div>
         )}
+        */}
 
         {/* Import spinner */}
         {isImporting && (
@@ -193,6 +253,7 @@ export const SignageMediaLibraryTab: React.FC = () => {
     items,
     loading,
     uploading,
+    uploadProgress,
     error,
     search,
     page,
@@ -209,6 +270,7 @@ export const SignageMediaLibraryTab: React.FC = () => {
   const importMedia = useProjectStore((s) => s.importMedia);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchInput, setSearchInput] = useState(search);
+  const [showLimits, setShowLimits] = useState(false);
   const [importingId, setImportingId] = useState<string | null>(null);
 
   // Initialize connection on mount — also listen for SIGNAGE_INIT arriving
@@ -301,6 +363,11 @@ export const SignageMediaLibraryTab: React.FC = () => {
     async (files: FileList | null) => {
       if (!files || files.length === 0) return;
       for (const file of Array.from(files)) {
+        const check = validateUploadFile(file);
+        if (!check.ok) {
+          toast.error("Can't upload", check.message);
+          continue;
+        }
         try {
           await uploadFile(file);
           toast.success("Uploaded", `${file.name} uploaded to media library.`);
@@ -371,22 +438,51 @@ export const SignageMediaLibraryTab: React.FC = () => {
             )}
             {uploading ? "Uploading…" : "Upload"}
           </button>
-          <button
-            onClick={() => void refresh()}
-            disabled={loading}
-            className="p-1.5 text-text-muted hover:text-text-secondary rounded-lg hover:bg-background-tertiary transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-          </button>
+          <div className="flex items-center gap-1">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowLimits((v) => !v)}
+                onBlur={() => setShowLimits(false)}
+                title="Accepted types & size limits"
+                aria-label="Accepted types and size limits"
+                className="p-1.5 text-text-muted hover:text-text-secondary rounded-lg hover:bg-background-tertiary transition-colors"
+              >
+                <Info size={13} />
+              </button>
+              {showLimits && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-56 p-2 rounded-lg bg-background-elevated border border-border shadow-lg text-[10px] text-text-secondary leading-snug">
+                  {UPLOAD_SIZE_SUMMARY}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => void refresh()}
+              disabled={loading}
+              className="p-1.5 text-text-muted hover:text-text-secondary rounded-lg hover:bg-background-tertiary transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            </button>
+          </div>
         </div>
+
+        {/* Upload progress */}
+        {uploadProgress != null && (
+          <div className="flex items-center gap-2">
+            <CircularProgress value={uploadProgress} size={36} />
+            <span className="text-[10px] text-text-muted">
+              {uploadProgress >= 100 ? "Processing…" : "Uploading…"}
+            </span>
+          </div>
+        )}
 
         {/* Hidden file input */}
         <input
           ref={fileInputRef}
           type="file"
           multiple
-          accept="video/*,audio/*,image/*"
+          accept={UPLOAD_ACCEPT_ATTR}
           onChange={(e) => {
             void handleUpload(e.target.files);
             e.target.value = "";

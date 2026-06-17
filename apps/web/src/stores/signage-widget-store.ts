@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { normalizeColor } from "../components/editor/widgets/color-utils";
 import { useProjectStore } from "./project-store";
+import { loadMediaForUrl } from "../utils/widget-video-cache";
 import type {
   AudioWidgetConfig,
   CalendarConfig,
@@ -50,12 +51,32 @@ type DefaultConfigs = {
   videoIn: VideoInConfig;
 };
 
+/**
+ * A widget video that's been fully downloaded into memory so it plays from a
+ * local blob (not streamed) and can be frame-extracted for the timeline.
+ */
+export interface WidgetVideoAsset {
+  /** Source URL this was downloaded for (re-download if the widget's URL changes). */
+  url: string;
+  /** Download progress 0–100. */
+  progress: number;
+  status: "loading" | "ready" | "error";
+  /** Object URL of the downloaded blob — used as the <video> src. */
+  blobUrl?: string;
+  /** Extracted frame thumbnails (data URLs) for the timeline filmstrip. */
+  frames?: string[];
+}
+
 interface SignageWidgetState {
   widgets: SignageWidget[];
   addWidget: (widget: SignageWidget) => void;
   removeWidget: (id: string) => void;
   updateWidget: (id: string, updates: Partial<SignageWidget>) => void;
   updateWidgetConfig: (id: string, config: WidgetConfig) => void;
+  /** Per-widget downloaded media assets (blob + progress + frames), keyed by widget id. */
+  videoAssets: Record<string, WidgetVideoAsset>;
+  /** Fully download a widget's media file (video/audio/pdf) with progress; extract frames for video. */
+  loadWidgetMedia: (widgetId: string, url: string, withFrames?: boolean) => void;
 }
 
 export const defaultConfigs: DefaultConfigs = {
@@ -218,7 +239,7 @@ export const defaultConfigs: DefaultConfigs = {
   video: {
     videoUrl: "",
     loop: true,
-    muted: true,
+    muted: false,
     autoplay: true,
     objectFit: "contain",
     backgroundColor: "rgba(0,0,0,0)",
@@ -530,6 +551,42 @@ export const migrateWidgets = (raw: SignageWidget[]): SignageWidget[] => raw.map
  */
 export const useSignageWidgetStore = create<SignageWidgetState>((set, get) => ({
   widgets: [],
+  videoAssets: {},
+  loadWidgetMedia: (widgetId, url, withFrames = false) => {
+    if (!url) return;
+    const existing = get().videoAssets[widgetId];
+    // Already loading/loaded for this exact URL — nothing to do.
+    if (existing && existing.url === url && existing.status !== "error") return;
+
+    set((state) => ({
+      videoAssets: {
+        ...state.videoAssets,
+        [widgetId]: { url, progress: 0, status: "loading" },
+      },
+    }));
+
+    // One download per URL is shared by every widget pointing at it — update
+    // them all together. (The cache also reuses across layouts/sessions.)
+    const patchAllForUrl = (partial: Partial<WidgetVideoAsset>) => {
+      set((state) => {
+        let changed = false;
+        const next: Record<string, WidgetVideoAsset> = { ...state.videoAssets };
+        for (const id of Object.keys(next)) {
+          if (next[id].url === url) {
+            next[id] = { ...next[id], ...partial };
+            changed = true;
+          }
+        }
+        return changed ? { videoAssets: next } : {};
+      });
+    };
+
+    loadMediaForUrl(url, (p) => patchAllForUrl({ progress: p }), withFrames)
+      .then(({ blobUrl, frames }) =>
+        patchAllForUrl({ status: "ready", progress: 100, blobUrl, frames }),
+      )
+      .catch(() => patchAllForUrl({ status: "error", progress: 0 }));
+  },
   addWidget: (widget) => {
     const widgets = [...get().widgets, migrateWidget(widget)];
     set({ widgets });

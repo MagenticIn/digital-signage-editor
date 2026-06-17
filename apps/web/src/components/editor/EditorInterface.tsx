@@ -185,6 +185,7 @@ export const EditorInterface: React.FC = () => {
   const timelineDuration = useProjectStore((s) => s.project.timeline.duration);
   const playDuration = useProjectStore((s) => s.project.settings.playDuration);
   const widgets = useSignageWidgetStore((s) => s.widgets);
+  const loadWidgetMedia = useSignageWidgetStore((s) => s.loadWidgetMedia);
   const hydratingMediaIds = useProjectStore((s) => s.hydratingMediaIds);
   const isHydrating = hydratingMediaIds.size > 0;
   // Preview no longer auto-plays. We still seek to 0 once hydration
@@ -217,6 +218,28 @@ export const EditorInterface: React.FC = () => {
       useTimelineStore.getState().seekTo(0);
     }
   }, [isPreview, playbackState, playheadPosition, timelineDuration, playDuration, widgets]);
+
+  // Fully download each media widget's source (video/audio/pdf) with progress so
+  // it plays/renders from a local blob and shows progress in the canvas + timeline.
+  // Editor only — preview/player streams as before. The loader dedupes/caches by URL.
+  useEffect(() => {
+    if (isPreview) return;
+    for (const w of widgets) {
+      const cfg = w.config as {
+        videoUrl?: string;
+        audioUrl?: string;
+        fileUrl?: string;
+        file?: unknown;
+      };
+      if (w.type === "video" && cfg.videoUrl) {
+        loadWidgetMedia(w.id, cfg.videoUrl, true);
+      } else if (w.type === "audio" && cfg.audioUrl) {
+        loadWidgetMedia(w.id, cfg.audioUrl, false);
+      } else if (w.type === "pdf" && cfg.fileUrl && !cfg.file) {
+        loadWidgetMedia(w.id, cfg.fileUrl, false);
+      }
+    }
+  }, [isPreview, widgets, loadWidgetMedia]);
 
   const {
     keyframeEditorOpen,

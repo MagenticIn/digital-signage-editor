@@ -162,7 +162,7 @@ export async function getMediaList(
 ): Promise<SignageMediaListResponse> {
   const params = new URLSearchParams();
   params.set("page", String(query.page ?? 1));
-  params.set("limit", String(query.limit ?? 40));
+  params.set("limit", String(query.limit ?? 100));
   params.set("scope", query.scope ?? "all");
   if (query.search) params.set("search", query.search);
   params.set("sortBy", query.sortBy ?? "updatedAt");
@@ -177,29 +177,48 @@ export async function getMediaQuota(): Promise<SignageMediaQuota> {
 }
 
 /** Upload a file to the signage media library. Returns the created item. */
-export async function uploadMedia(
+export function uploadMedia(
   file: File,
   name?: string,
+  onProgress?: (percent: number) => void,
 ): Promise<SignageMediaItem> {
+  // TEMP local-testing fallback — REMOVE before committing (hardcoded JWT).
   const base = getApiBase();
   const token = getToken();
   if (!base || !token) {
-    throw new Error("Signage backend not connected.");
+    return Promise.reject(new Error("Signage backend not connected."));
   }
 
   const formData = new FormData();
   formData.append("name", name ?? file.name);
   formData.append("file", file);
 
-  const response = await fetch(`${base}/media/upload`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
+  // XMLHttpRequest (not fetch) so we can report upload progress (0–100%).
+  return new Promise<SignageMediaItem>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${base}/media/upload`);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.timeout = 10 * 60 * 1000; // 10 minutes — large videos
+    xhr.upload.onprogress = (e) => {
+      if (onProgress && e.lengthComputable && e.total > 0) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as SignageMediaItem);
+        } catch {
+          reject(new Error("Upload succeeded but the response was not valid JSON."));
+        }
+      } else {
+        reject(
+          new Error(`Upload failed ${xhr.status}: ${xhr.responseText.slice(0, 300)}`),
+        );
+      }
+    };
+    xhr.onerror = () => reject(new Error("Upload failed (network error)."));
+    xhr.ontimeout = () => reject(new Error("Upload timed out."));
+    xhr.send(formData);
   });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`Upload failed ${response.status}: ${body.slice(0, 300)}`);
-  }
-  return response.json() as Promise<SignageMediaItem>;
 }

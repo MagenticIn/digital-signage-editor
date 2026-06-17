@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Cloud,
@@ -7,8 +7,6 @@ import {
   Image as ImageIcon,
   Music,
   FileText,
-  ChevronLeft,
-  ChevronRight,
   RefreshCw,
   AlertTriangle,
   X,
@@ -57,6 +55,36 @@ function iconFor(type: string | null | undefined): React.ReactNode {
   return <ImageIcon size={28} className="text-emerald-400" />;
 }
 
+/** Human-readable byte size, e.g. "12.4 MB", "640 KB". */
+function formatBytes(bytes: number | null | undefined): string {
+  if (!bytes || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  const rounded = i === 0 || value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
+  return `${rounded} ${units[i]}`;
+}
+
+/** Duration in a readable form: "45s", "1 min", "2 min", or "10:09". */
+export function formatDuration(seconds: number): string {
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem === 0 ? `${m} min` : `${m}:${String(rem).padStart(2, "0")}`;
+}
+
+/** Short uppercase type label from a MIME type, e.g. "video/mp4" → "MP4". */
+function shortType(type: string | null | undefined): string {
+  const t = (type ?? "").toLowerCase();
+  const sub = t.includes("/") ? t.split("/")[1] : t;
+  return (sub || "file").toUpperCase();
+}
+
 const MEDIA_FILES_PATH = "/api/v1/media-files";
 
 /**
@@ -102,39 +130,122 @@ export function toLibraryMediaRef(
   };
 }
 
+/**
+ * Latches `true` once the element first scrolls within `rootMargin` of the
+ * given scroll container. Used to defer heavy per-card media (video first-frame
+ * and duration probe) until a card is near the viewport, so opening the picker
+ * doesn't kick off ~100 simultaneous video loads (which froze scroll + clicks).
+ */
+export function useInViewOnce<T extends HTMLElement = HTMLElement>(
+  root?: React.RefObject<HTMLElement | null>,
+): [React.RefObject<T>, boolean] {
+  const targetRef = useRef<T>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    if (seen) return;
+    const el = targetRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setSeen(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setSeen(true);
+          io.disconnect();
+        }
+      },
+      { root: root?.current ?? null, rootMargin: "300px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen, root]);
+  return [targetRef, seen];
+}
+
 const Thumbnail: React.FC<{
   item: SignageMediaItem;
   onPick: () => void;
-}> = ({ item, onPick }) => {
+  scrollRoot: React.RefObject<HTMLElement | null>;
+}> = ({ item, onPick, scrollRoot }) => {
+  const [rootRef, seen] = useInViewOnce<HTMLButtonElement>(scrollRoot);
   const thumb = resolveSignageAssetUrl(item.thumbnailUrl);
   const t = (item.type ?? "").toLowerCase();
   const isImage = t.startsWith("image/");
-  const previewUrl = isImage ? resolveLibraryAssetUrl(item) : null;
+  const isVideo = t.startsWith("video/");
+  const assetUrl = isImage || isVideo ? resolveLibraryAssetUrl(item) : null;
+  const sizeLabel = formatBytes(item.size);
+
+  // Duration: prefer the backend value; if a video is missing it, probe the
+  // file's metadata client-side so every video still shows its play time.
+  const backendDuration =
+    item.durationSeconds != null && item.durationSeconds > 0
+      ? item.durationSeconds
+      : null;
+  const [probedDuration, setProbedDuration] = useState<number | null>(null);
+  const duration = backendDuration ?? probedDuration;
+  const hasDuration = duration != null && duration > 0;
+  const needsProbe = isVideo && !backendDuration && !!assetUrl;
+  const onMeta = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const d = e.currentTarget.duration;
+    if (Number.isFinite(d) && d > 0) setProbedDuration(d);
+  };
 
   return (
     <button
+      ref={rootRef}
       type="button"
       onClick={onPick}
       className="text-left group flex flex-col rounded-lg overflow-hidden border border-zinc-700 hover:border-emerald-500 transition-colors bg-zinc-800"
     >
       <div className="aspect-video bg-zinc-900 relative flex items-center justify-center overflow-hidden">
         {thumb ? (
-          <img src={thumb} alt={item.name} className="w-full h-full object-cover" />
-        ) : previewUrl ? (
           <img
-            src={previewUrl}
+            src={thumb}
             alt={item.name}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-full object-cover"
+          />
+        ) : isImage && assetUrl ? (
+          <img
+            src={assetUrl}
+            alt={item.name}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none";
             }}
           />
+        ) : isVideo && assetUrl && seen ? (
+          // No backend poster — show the video's first frame (#t=0.1 seeks to it).
+          // Only mounted once the card scrolls into view (see useInViewOnce).
+          <video
+            src={`${assetUrl}#t=0.1`}
+            muted
+            playsInline
+            preload="metadata"
+            onLoadedMetadata={onMeta}
+            className="w-full h-full object-cover"
+          />
         ) : (
           iconFor(item.type)
         )}
-        {item.durationSeconds != null && item.durationSeconds > 0 && (
+        {/* Video has a poster but no backend duration → probe metadata once in view. */}
+        {seen && thumb && needsProbe && (
+          <video
+            src={assetUrl as string}
+            muted
+            preload="metadata"
+            onLoadedMetadata={onMeta}
+            className="hidden"
+          />
+        )}
+        {hasDuration && (
           <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 rounded text-[9px] text-white font-mono">
-            {Math.round(item.durationSeconds)}s
+            {formatDuration(duration as number)}
           </div>
         )}
       </div>
@@ -142,7 +253,21 @@ const Thumbnail: React.FC<{
         <div className="text-[11px] font-medium text-zinc-100 truncate" title={item.name}>
           {item.name}
         </div>
-        <div className="text-[9px] text-zinc-400 truncate">{item.type}</div>
+        <div className="text-[9px] text-zinc-400 truncate flex items-center gap-1">
+          <span className="uppercase">{shortType(item.type)}</span>
+          {sizeLabel && (
+            <>
+              <span className="text-zinc-600">·</span>
+              <span>{sizeLabel}</span>
+            </>
+          )}
+          {hasDuration && (
+            <>
+              <span className="text-zinc-600">·</span>
+              <span>{formatDuration(duration as number)}</span>
+            </>
+          )}
+        </div>
       </div>
     </button>
   );
@@ -160,17 +285,15 @@ export const LibraryAssetPicker: React.FC<LibraryAssetPickerProps> = ({
     items,
     loading,
     error,
-    page,
-    totalPages,
     search,
     checkConnection,
     fetchItems,
     setSearch,
-    setPage,
     refresh,
   } = useSignageMediaStore();
 
   const [searchInput, setSearchInput] = useState(search);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -277,7 +400,7 @@ export const LibraryAssetPicker: React.FC<LibraryAssetPickerProps> = ({
           </div>
         ) : null}
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
           <div className="px-5 py-4 min-h-[260px]">
             {loading && filteredItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
@@ -303,6 +426,7 @@ export const LibraryAssetPicker: React.FC<LibraryAssetPickerProps> = ({
                     key={item.id}
                     item={item}
                     onPick={() => handlePick(item)}
+                    scrollRoot={scrollRef}
                   />
                 ))}
               </div>
@@ -310,27 +434,6 @@ export const LibraryAssetPicker: React.FC<LibraryAssetPickerProps> = ({
           </div>
         </div>
 
-        {totalPages > 1 && connected && (
-          <div className="flex items-center justify-center gap-3 px-5 py-2 border-t border-zinc-800">
-            <button
-              onClick={() => setPage(page - 1)}
-              disabled={page <= 1}
-              className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 disabled:opacity-30 transition-colors"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <span className="text-[10px] text-zinc-300">
-              Page {page} of {totalPages}
-            </span>
-            <button
-              onClick={() => setPage(page + 1)}
-              disabled={page >= totalPages}
-              className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 disabled:opacity-30 transition-colors"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

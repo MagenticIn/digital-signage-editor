@@ -60,6 +60,7 @@ function coerceEditorProject(json: unknown): Project | null {
   };
 }
 import { setSignageAuth, getSignageLayout, isSignageLayoutsConnected } from "./services/signage-layouts-api";
+import { useSignageLayoutStore } from "./stores/signage-layout-store";
 import { useSignageMediaStore } from "./stores/signage-media-store";
 
 const EditorInterface = lazy(() =>
@@ -172,6 +173,15 @@ function App() {
         }
 
         const layout = await getSignageLayout(params.signageLayoutId!);
+        // Surface the layout's name/description/status in the Canvas tab so the
+        // user knows which layout they're editing.
+        useSignageLayoutStore.getState().setMeta({
+          id: layout.id,
+          name: layout.name,
+          description: layout.description,
+          status: layout.status,
+          resolution: layout.resolution,
+        });
         const project = coerceEditorProject(layout.layoutJson);
         if (project) {
           loadProject(project);

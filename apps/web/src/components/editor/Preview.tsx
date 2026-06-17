@@ -100,6 +100,7 @@ import { PDFWidget } from "./widgets/PDFWidget";
 import { PowerPointWidget } from "./widgets/PowerPointWidget";
 import { TickerWidget } from "./widgets/TickerWidget";
 import { VideoWidget } from "./widgets/VideoWidget";
+import { CircularProgress } from "./CircularProgress";
 import { ImageWidget } from "./widgets/ImageWidget";
 import { AudioWidget } from "./widgets/AudioWidget";
 import { IframeWidget } from "./widgets/IframeWidget";
@@ -261,6 +262,7 @@ export const Preview: React.FC = () => {
   const isPreview = useRouter().params.preview === "1";
   const widgets = useSignageWidgetStore((state) => state.widgets);
   const updateWidget = useSignageWidgetStore((state) => state.updateWidget);
+  const videoAssets = useSignageWidgetStore((state) => state.videoAssets);
 
   // Canvas interaction state for resize/move
   const [interactionMode, setInteractionMode] =
@@ -467,6 +469,11 @@ export const Preview: React.FC = () => {
   }, [isScrubbing]);
 
   const isPlaying = playbackState === "playing";
+  // True while any widget video is still downloading — keeps the play button
+  // spinning until every video is fully loaded.
+  const anyVideoLoading = Object.values(videoAssets).some(
+    (a) => a.status === "loading",
+  );
 
   const motionPathClip = React.useMemo(() => {
     if (!motionPathMode || !motionPathClipId) return null;
@@ -5111,18 +5118,38 @@ export const Preview: React.FC = () => {
         return <ImageWidget config={widget.config as ImageWidgetConfig} />;
       }
       if (widget.type === "video") {
+        const vcfg = widget.config as VideoWidgetConfig;
+        const asset = videoAssets[widget.id];
+        // While fully downloading, don't also stream the URL — show a blank box;
+        // the wrapper renders the progress ring on top.
+        if (asset && asset.status === "loading") {
+          return (
+            <div
+              className="w-full h-full"
+              style={{ background: vcfg.backgroundColor || "rgba(0,0,0,1)" }}
+            />
+          );
+        }
+        // Prefer the fully-downloaded local blob (plays without re-streaming).
+        const src = asset?.blobUrl ?? vcfg.videoUrl;
         return (
           <VideoWidget
-            config={widget.config as VideoWidgetConfig}
+            config={{ ...vcfg, videoUrl: src }}
             widgetTime={widgetTime}
             isPlaying={isPlaying}
           />
         );
       }
       if (widget.type === "audio") {
+        const acfg = widget.config as AudioWidgetConfig;
+        const asset = videoAssets[widget.id];
+        if (asset && asset.status === "loading") {
+          return <div className="w-full h-full" />;
+        }
+        const src = asset?.blobUrl ?? acfg.audioUrl;
         return (
           <AudioWidget
-            config={widget.config as AudioWidgetConfig}
+            config={{ ...acfg, audioUrl: src }}
             widgetTime={widgetTime}
             isPlaying={isPlaying}
           />
@@ -5142,7 +5169,16 @@ export const Preview: React.FC = () => {
         return <TickerWidget config={{ ...config, text: displayText }} />;
       }
       if (widget.type === "pdf") {
-        return <PDFWidget config={widget.config as PDFConfig} currentTime={widgetTime} />;
+        const pcfg = widget.config as PDFConfig;
+        const asset = videoAssets[widget.id];
+        if (asset && asset.status === "loading") {
+          return <div className="w-full h-full" />;
+        }
+        // Render from the locally-downloaded blob (skips pdf.js re-downloading).
+        // The asset only exists for fileUrl-based PDFs (no local `file`), so
+        // overriding fileUrl is enough.
+        const cfg = asset?.blobUrl ? { ...pcfg, fileUrl: asset.blobUrl } : pcfg;
+        return <PDFWidget config={cfg} currentTime={widgetTime} />;
       }
       if (widget.type === "iframe") {
         return <IframeWidget config={widget.config as IframeConfig} interactive={false} />;
@@ -5340,7 +5376,7 @@ export const Preview: React.FC = () => {
       }
       return <CalendarWidget config={widget.config as CalendarConfig} />;
     },
-    [isPlaying],
+    [isPlaying, videoAssets],
   );
 
   return (
@@ -5476,6 +5512,17 @@ export const Preview: React.FC = () => {
                       {renderWidgetContent(widget, widgetTime, selected)}
                     </div>
                   )}
+                  {(widget.type === "video" ||
+                    widget.type === "audio" ||
+                    widget.type === "pdf") &&
+                    videoAssets[widget.id]?.status === "loading" && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
+                        <CircularProgress
+                          value={videoAssets[widget.id]?.progress ?? 0}
+                          size={56}
+                        />
+                      </div>
+                    )}
                 </div>
                 {selected && !widget.locked && (
                   <>
@@ -5895,11 +5942,15 @@ export const Preview: React.FC = () => {
             onClick={() => {
               togglePlayback();
             }}
-            disabled={isHydrating}
-            title={isHydrating ? "Waiting for videos to load…" : undefined}
+            disabled={isHydrating || anyVideoLoading}
+            title={
+              isHydrating || anyVideoLoading
+                ? "Waiting for videos to load…"
+                : undefined
+            }
             className="w-10 h-10 rounded-full bg-primary hover:bg-primary-hover active:bg-primary-active flex items-center justify-center text-white transition-all shadow-[0_0_15px_rgba(34,197,94,0.4)] hover:shadow-[0_0_25px_rgba(34,197,94,0.6)] transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:bg-primary disabled:hover:shadow-[0_0_15px_rgba(34,197,94,0.4)]"
           >
-            {isHydrating ? (
+            {isHydrating || anyVideoLoading ? (
               <Loader2 size={18} className="animate-spin" />
             ) : isPlaying ? (
               <Pause size={18} fill="currentColor" />

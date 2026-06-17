@@ -13,6 +13,7 @@ import {
   Library as LibraryIcon,
 } from "lucide-react";
 import { useSignageWidgetStore } from "../../../stores/signage-widget-store";
+import { useProjectStore } from "../../../stores/project-store";
 import * as pdfjs from "pdfjs-dist";
 import {
   LibraryAssetPicker,
@@ -101,6 +102,7 @@ interface WidgetInspectorProps {
 export const WidgetInspector: React.FC<WidgetInspectorProps> = ({ widget }) => {
   const updateWidget = useSignageWidgetStore((state) => state.updateWidget);
   const updateWidgetConfig = useSignageWidgetStore((state) => state.updateWidgetConfig);
+  const settings = useProjectStore((state) => state.project.settings);
 
   const updateConfig = (config: SignageWidget["config"]) => {
     updateWidgetConfig(widget.id, config);
@@ -228,6 +230,18 @@ export const WidgetInspector: React.FC<WidgetInspectorProps> = ({ widget }) => {
             }
           />
         </div>
+        <button
+          type="button"
+          onClick={() =>
+            updateWidget(widget.id, {
+              layout: { x: 0, y: 0, width: settings.width, height: settings.height },
+            })
+          }
+          className={`${smallBtnClass} w-full mt-2`}
+          title="Resize this widget to fill the whole canvas"
+        >
+          Fit to canvas
+        </button>
         {(widget.layout?.width === 0 || widget.layout?.height === 0) && (
           <div className="mt-2 flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/30 rounded">
             <AlertCircle size={12} className="text-red-400 shrink-0" />
@@ -310,7 +324,11 @@ export const WidgetInspector: React.FC<WidgetInspectorProps> = ({ widget }) => {
         <ImageFields config={widget.config as ImageWidgetConfig} onChange={updateConfig} />
       )}
       {widget.type === "video" && (
-        <VideoFields config={widget.config as VideoWidgetConfig} onChange={updateConfig} />
+        <VideoFields
+          config={widget.config as VideoWidgetConfig}
+          onChange={updateConfig}
+          onPickDuration={(seconds) => updateWidget(widget.id, { duration: seconds })}
+        />
       )}
       {widget.type === "audio" && (
         <AudioFields config={widget.config as AudioWidgetConfig} onChange={updateConfig} />
@@ -1408,7 +1426,7 @@ const ImageFields = ({ config, onChange }: { config: ImageWidgetConfig; onChange
   </div>
 );
 
-const VideoFields = ({ config, onChange }: { config: VideoWidgetConfig; onChange: (v: VideoWidgetConfig) => void }) => (
+const VideoFields = ({ config, onChange, onPickDuration }: { config: VideoWidgetConfig; onChange: (v: VideoWidgetConfig) => void; onPickDuration?: (seconds: number) => void }) => (
   <div className={sectionClass}>
     <div>
       <label className={labelClass}>Video URL</label>
@@ -1421,6 +1439,8 @@ const VideoFields = ({ config, onChange }: { config: VideoWidgetConfig; onChange
       onPick={(item) => {
         const url = resolveLibraryAssetUrl(item);
         if (url) onChange({ ...config, videoUrl: url, libraryMedia: toLibraryMediaRef(item, url) });
+        // Default the widget duration to the video's full length (still editable from the timeline).
+        if (item.durationSeconds && item.durationSeconds > 0) onPickDuration?.(item.durationSeconds);
       }}
     />
     <div>
@@ -1431,7 +1451,9 @@ const VideoFields = ({ config, onChange }: { config: VideoWidgetConfig; onChange
         <option value="fill">Fill</option>
       </select>
     </div>
+    {/* Background color + opacity commented out for video
     <ColorOpacityInput label="Background color" value={config.backgroundColor} onChange={(rgba) => onChange({ ...config, backgroundColor: rgba })} />
+    */}
     <label className="text-xs flex items-center gap-2">
       <input type="checkbox" checked={config.loop} onChange={(e) => onChange({ ...config, loop: e.target.checked })} />Loop
     </label>

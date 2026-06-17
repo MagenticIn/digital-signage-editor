@@ -44,6 +44,7 @@ import {
   formatTimecode,
 } from "./timeline/index";
 import { WidgetContextMenu } from "./timeline/WidgetContextMenu";
+import { CircularProgress } from "./CircularProgress";
 
 export const Timeline: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -94,6 +95,7 @@ export const Timeline: React.FC = () => {
   } = useUIStore();
   const selectedItems = useUIStore((state) => state.selectedItems);
   const widgets = useSignageWidgetStore((state) => state.widgets);
+  const videoAssets = useSignageWidgetStore((state) => state.videoAssets);
   const addWidget = useSignageWidgetStore((state) => state.addWidget);
   const updateWidget = useSignageWidgetStore((state) => state.updateWidget);
   const removeWidget = useSignageWidgetStore((state) => state.removeWidget);
@@ -1128,6 +1130,14 @@ export const Timeline: React.FC = () => {
                 const isLocked = Boolean(widget.locked);
                 const isHidden = Boolean(widget.hidden);
                 const color = widgetColorMap[widget.type] ?? defaultWidgetColor;
+                const mediaAsset =
+                  widget.type === "video" ||
+                  widget.type === "audio" ||
+                  widget.type === "pdf"
+                    ? videoAssets[widget.id]
+                    : undefined;
+                const videoFrames = mediaAsset?.frames; // only videos carry frames
+                const frameCount = Math.max(1, Math.floor(blockWidth / 60));
                 return (
                   <div
                     key={widget.id}
@@ -1162,7 +1172,37 @@ export const Timeline: React.FC = () => {
                             );
                           }}
                         >
-                          <span className="flex h-full items-center gap-1 px-2.5">
+                          {videoFrames && videoFrames.length > 0 && (
+                            <span className="pointer-events-none absolute inset-0 flex overflow-hidden rounded-lg opacity-60">
+                              {Array.from({ length: frameCount }).map((_, i) => {
+                                const idx = Math.min(
+                                  Math.floor(
+                                    (i / Math.max(1, frameCount - 1)) *
+                                      videoFrames.length,
+                                  ),
+                                  videoFrames.length - 1,
+                                );
+                                return (
+                                  <span
+                                    key={i}
+                                    className="h-full flex-1 bg-cover bg-center"
+                                    style={{
+                                      backgroundImage: `url(${videoFrames[idx]})`,
+                                    }}
+                                  />
+                                );
+                              })}
+                            </span>
+                          )}
+                          {mediaAsset?.status === "loading" && (
+                            <span className="pointer-events-none absolute inset-0 flex items-center justify-start pl-[85px] bg-black/45">
+                              <CircularProgress
+                                value={mediaAsset.progress ?? 0}
+                                size={28}
+                              />
+                            </span>
+                          )}
+                          <span className="relative z-10 flex h-full items-center gap-1 px-2.5">
                             <span className="truncate text-xs font-medium drop-shadow-sm">
                               {widgetDisplayName(widget.type)}
                             </span>

@@ -977,11 +977,11 @@ export const AssetsPanel: React.FC = () => {
       }
 
       // Span the current canvas duration on insert (= the longest existing
-      // item, or 60 s when the layout is empty) so a fresh widget covers the
+      // item, or 30 s when the layout is empty) so a fresh widget covers the
       // whole layout. The canvas auto-tracks items, so dragging this widget's
       // timeline handle re-adjusts the canvas duration accordingly.
       const widgetDuration =
-        project.timeline.duration > 0 ? project.timeline.duration : 60;
+        project.timeline.duration > 0 ? project.timeline.duration : 30;
 
       addWidget({
         id: uuidv4(),
@@ -1016,6 +1016,7 @@ export const AssetsPanel: React.FC = () => {
 
       {/* Tabs */}
       <div className="flex px-5 gap-4 border-b border-border text-xs font-medium text-text-muted mb-5 overflow-x-auto">
+        {/* Media tab commented out (download-to-media flow disabled for now)
         <button
           onClick={() => setActiveTab("media")}
           className={`pb-3 transition-all relative ${
@@ -1029,6 +1030,7 @@ export const AssetsPanel: React.FC = () => {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(34,197,94,0.5)]" />
           )}
         </button>
+        */}
         <button
           onClick={() => setActiveTab("widgets")}
           className={`pb-3 transition-all relative ${

@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { ChevronDown, Zap, Captions, Loader2, X } from "lucide-react";
 import { useProjectStore } from "../../stores/project-store";
+import { useSignageLayoutStore } from "../../stores/signage-layout-store";
 import { ColorOpacityInput } from "./widgets/ColorOpacityInput";
 import { useUIStore } from "../../stores/ui-store";
 import { useEngineStore } from "../../stores/engine-store";
@@ -129,6 +130,7 @@ const LAYOUT_RESOLUTION_PRESETS: ResolutionPreset[] = [
 const CanvasSettings: React.FC = () => {
   const project = useProjectStore((state) => state.project);
   const updateSettings = useProjectStore((state) => state.updateSettings);
+  const layoutMeta = useSignageLayoutStore((state) => state.meta);
 
   const settings = project?.settings;
   const [placeholderFontSizeInput, setPlaceholderFontSizeInput] = React.useState<string>(
@@ -137,6 +139,21 @@ const CanvasSettings: React.FC = () => {
   React.useEffect(() => {
     if (settings) setPlaceholderFontSizeInput(String(settings.placeholderFontSize ?? 24));
   }, [settings?.placeholderFontSize]);
+
+  // Custom resolution: locally-buffered width/height inputs (commit on blur/Enter).
+  const [customResolution, setCustomResolution] = React.useState(false);
+  const [widthInput, setWidthInput] = React.useState<string>(
+    settings?.width !== undefined ? String(settings.width) : "1920",
+  );
+  const [heightInput, setHeightInput] = React.useState<string>(
+    settings?.height !== undefined ? String(settings.height) : "1080",
+  );
+  React.useEffect(() => {
+    if (settings) {
+      setWidthInput(String(settings.width));
+      setHeightInput(String(settings.height));
+    }
+  }, [settings?.width, settings?.height]);
 
   if (!settings) {
     return (
@@ -160,6 +177,20 @@ const CanvasSettings: React.FC = () => {
     void updateSettings({ width: preset.width, height: preset.height });
   };
 
+  // Custom is active when the user picked it, or the current size matches no preset.
+  const isCustomResolution = customResolution || !matchedPreset;
+  const commitCustomResolution = () => {
+    const w = Math.round(Number(widthInput));
+    const h = Math.round(Number(heightInput));
+    const nextW = Number.isFinite(w) && w >= 32 ? w : settings.width;
+    const nextH = Number.isFinite(h) && h >= 32 ? h : settings.height;
+    setWidthInput(String(nextW));
+    setHeightInput(String(nextH));
+    if (nextW !== settings.width || nextH !== settings.height) {
+      void updateSettings({ width: nextW, height: nextH });
+    }
+  };
+
   const commitPlaceholderFontSize = () => {
     const parsed = Number(placeholderFontSizeInput);
     const current = settings.placeholderFontSize ?? 24;
@@ -172,7 +203,7 @@ const CanvasSettings: React.FC = () => {
   // Canvas duration is fully automatic: it always matches the longest timeline
   // item (clips + widgets), or 60 s when the layout is empty. Read-only.
   const timelineDuration = project?.timeline.duration ?? 0;
-  const canvasDuration = timelineDuration > 0 ? timelineDuration : 60;
+  const canvasDuration = timelineDuration > 0 ? timelineDuration : 30;
 
   return (
     <div className="p-4 space-y-3">
@@ -182,20 +213,69 @@ const CanvasSettings: React.FC = () => {
           <label className="text-[10px] text-text-secondary block mb-1">Resolution</label>
           <select
             className="w-full bg-background border border-border rounded px-2 py-1 text-xs"
-            value={matchedPreset?.id ?? ""}
-            onChange={(e) => handleResolutionChange(e.target.value)}
+            value={isCustomResolution ? "custom" : (matchedPreset?.id ?? "custom")}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === "custom") {
+                setCustomResolution(true);
+              } else {
+                setCustomResolution(false);
+                handleResolutionChange(value);
+              }
+            }}
           >
-            {!matchedPreset && (
-              <option value="" disabled>
-                Custom ({settings.width} × {settings.height})
-              </option>
-            )}
             {LAYOUT_RESOLUTION_PRESETS.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.label} — {p.resolution}
               </option>
             ))}
+            <option value="custom">Custom…</option>
           </select>
+          {isCustomResolution && (
+            <>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div>
+                  <label className="text-[10px] text-text-secondary block mb-1">Width (px)</label>
+                  <input
+                    type="number"
+                    min={32}
+                    step={1}
+                    className="w-full bg-background border border-border rounded px-2 py-1 text-xs"
+                    value={widthInput}
+                    onChange={(e) => setWidthInput(e.target.value)}
+                    onBlur={commitCustomResolution}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        commitCustomResolution();
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-text-secondary block mb-1">Height (px)</label>
+                  <input
+                    type="number"
+                    min={32}
+                    step={1}
+                    className="w-full bg-background border border-border rounded px-2 py-1 text-xs"
+                    value={heightInput}
+                    onChange={(e) => setHeightInput(e.target.value)}
+                    onBlur={commitCustomResolution}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        commitCustomResolution();
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-text-muted mt-1">
+                Min 32px. The canvas renders at this exact size.
+              </p>
+            </>
+          )}
         </div>
         <ColorOpacityInput
           label="Background color"
@@ -214,6 +294,32 @@ const CanvasSettings: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {layoutMeta && (
+        <div className="rounded-lg border border-border p-3 bg-background-tertiary space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] uppercase tracking-wider text-text-muted">Layout</div>
+            {layoutMeta.status && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded border border-border text-text-secondary uppercase tracking-wide">
+                {layoutMeta.status}
+              </span>
+            )}
+          </div>
+          <div
+            className="text-xs font-semibold text-text-primary break-words"
+            title={layoutMeta.name}
+          >
+            {layoutMeta.name || "Untitled layout"}
+          </div>
+          {layoutMeta.description ? (
+            <p className="text-[10px] text-text-secondary break-words">
+              {layoutMeta.description}
+            </p>
+          ) : (
+            <p className="text-[10px] text-text-muted italic">No description</p>
+          )}
+        </div>
+      )}
 
       <div className="text-[10px] uppercase tracking-wider text-text-muted">Placeholder</div>
       <div className="rounded-lg border border-border p-3 bg-background-tertiary space-y-2">

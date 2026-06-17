@@ -31,6 +31,9 @@ export interface SignageMediaState {
   /** True while uploading a file. */
   uploading: boolean;
 
+  /** Upload progress 0-100 for the in-flight upload, or null when idle. */
+  uploadProgress: number | null;
+
   /** Last error message (cleared on next successful call). */
   error: string | null;
 
@@ -79,6 +82,7 @@ export const useSignageMediaStore = create<SignageMediaState>()((set, get) => ({
   quota: null,
   loading: false,
   uploading: false,
+  uploadProgress: null,
   error: null,
   search: "",
   page: 1,
@@ -97,7 +101,9 @@ export const useSignageMediaStore = create<SignageMediaState>()((set, get) => ({
     try {
       const res = await getMediaList({
         page: query.page ?? state.page,
-        limit: query.limit ?? 40,
+        // Load up to 100 in a single page so the library picker shows everything
+        // without pagination (applies to initial load and search alike).
+        limit: query.limit ?? 100,
         scope: query.scope ?? "all",
         search: query.search ?? (state.search || undefined),
         sortBy: query.sortBy ?? "updatedAt",
@@ -131,16 +137,16 @@ export const useSignageMediaStore = create<SignageMediaState>()((set, get) => ({
   },
 
   uploadFile: async (file: File, name?: string) => {
-    set({ uploading: true, error: null });
+    set({ uploading: true, uploadProgress: 0, error: null });
     try {
-      const item = await uploadMedia(file, name);
-      set({ uploading: false });
+      const item = await uploadMedia(file, name, (p) => set({ uploadProgress: p }));
+      set({ uploading: false, uploadProgress: null });
       // Refresh to show the new item + updated quota
       void get().refresh();
       return item;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Upload failed.";
-      set({ uploading: false, error: msg });
+      set({ uploading: false, uploadProgress: null, error: msg });
       throw e;
     }
   },
